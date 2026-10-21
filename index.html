@@ -95,6 +95,11 @@ header.top p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
 .board .lbl.dim { fill: var(--muted); opacity: .6; }
 .board .sub { font-family: var(--f-mono); font-size: 10px; text-anchor: middle; dominant-baseline: central; fill: var(--ink); pointer-events: none; }
 .board .sub.on { fill: var(--on-ink); }
+.board .sub.alt:not(.on) { fill: var(--muted); }
+.board .btn-g.alt .ring { stroke-dasharray: 4 3; }
+.options { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.options li { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.options li b { min-width: 52px; font-size: 14px; }
 .degrees { display: flex; gap: 6px; flex-wrap: wrap; }
 .degrees span { display: flex; flex-direction: column; align-items: center; min-width: 44px; padding: 4px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--slab); font-weight: 600; }
 .degrees span.tonic { border-color: var(--ink); }
@@ -168,7 +173,7 @@ header.top p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
   <header class="top">
     <div>
       <h1>C♯/D button accordion</h1>
-      <p>23-button treble · 8-button modern bass layout</p>
+      <p>McNeela C♯/D · 23-button treble · 8-button modern bass layout</p>
     </div>
     <nav class="tabs" role="tablist" aria-label="View">
       <button role="tab" data-tab="board">Keyboard</button>
@@ -177,9 +182,9 @@ header.top p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
   </header>
   <main id="view"></main>
   <footer class="foot">
-    <span>Left half of each button = push, right half = pull. Chords: + = major. Layout drawn from the “23 button C#/D modern bass layout” chart.</span>
+    <span>Left half of each button = push, right half = pull. Chords: + = major. Layout drawn from McNeela’s “23 button C#/D modern bass layout” chart (the D row is the inside row, nearer the bellows; the C♯ row is the outside row).</span>
     <span>Tones are synthesized and the octaves are approximate: each row is assumed to rise left to right from about C♯3/D3. Note names are exact.</span>
-    <span>Scales: the numbered path is one sensible route up an octave (fewest bellows reversals, then fewest row changes). Chords are the usual trad Irish backing choices; on this bass side a minor is backed by its bass note under the relative major chord when the bellows directions match, otherwise by the bass note alone.</span>
+    <span>Scales: F♯ and C♯ sit on both rows in opposite bellows directions, so those steps can stay in the row (reversing the bellows) or switch rows (keeping the bellows going). The Keyboard tab shows both routes and lets you pick per note; dashed buttons are the alternatives. Chords are the usual trad Irish backing choices; on this bass side a minor is backed by its bass note under the relative major chord when the bellows directions match, otherwise by the bass note alone.</span>
     <span>Flashcards are scheduled Again / Hard / Good / Easy, spaced like Anki. Progress is saved in this browser; a card counts as mastered once its interval reaches 21 days.</span>
   </footer>
 </div>
@@ -229,6 +234,7 @@ BASS.forEach(([kind, push, pull], j) => BUTTONS.push({
   pull: { name: pull, label: fmt(pull) + (kind === "chord" ? "+" : ""), midi: bassTone(kind, pull) },
 }));
 const BY_KEY = Object.fromEntries(BUTTONS.map(b => [b.key, b]));
+const TREBLE_HALVES = BUTTONS.filter(b => b.kind === "note").flatMap(b => ["push", "pull"].map(d => ({ b, d, midi: b[d].midi[0] })));
 const halfOf = hk => BY_KEY[hk.slice(0, -4)][hk.slice(-4)];   // "D4pull" -> that half
 const describe = (b, d) => `${REGION[b.region]} ${b.region === "bass" ? b.kind : "button"} ${b.region === "bass" ? "" : b.idx + 1} ${d}`.replace(/\s+/g, " ");
 
@@ -250,7 +256,10 @@ const SCALES = [
   const pcs = MODES[mode].map(i => (PC[tonic] + i) % 12);
   const sc = { key: (tonic + "-" + mode).toLowerCase(), tonic, mode, title: `${fmt(tonic)} ${mode}`, pcs, notes: pcs.map(p => NOTES[p]) };
   sc.chords = chords.map(sym => chordInfo(sym, sc));
-  sc.path = scalePath(sc);
+  sc.cands = scaleCands(sc);
+  sc.routes = { row: route(sc.cands, 1, 3), bellows: route(sc.cands, 3, 1) };
+  sc.path = sc.routes.row;
+  sc.options = sc.cands.map((cs, i) => i).filter(i => sc.cands[i].length > 1);
   return sc;
 });
 const SCALE_BY_KEY = Object.fromEntries(SCALES.map(s => [s.key, s]));
@@ -281,20 +290,28 @@ function bassWays(root, minor) {
 }
 const chordTone = ch => ch.ways.length ? ch.ways[0].taps.flatMap(t => halfOf(t).midi) : ch.pcs.map(p => lowestFrom(NOTES[p], 52));
 
-// One octave up from the tonic (G3 or above). Picks the route with the fewest bellows reversals,
-// then the fewest row changes, then the least reach. Flashcards accept any button with the right pitch.
-function scalePath(sc) {
+// One octave up from the tonic (G3 or above). Each step lists every half with that pitch: F♯ and C♯ sit on
+// both rows in opposite bellows directions, so those steps are a choice between staying in the row
+// (and reversing the bellows) or switching rows (and keeping the bellows going).
+function scaleCands(sc) {
   const start = lowestFrom(sc.tonic, 55);
-  const halves = BUTTONS.filter(b => b.kind === "note").flatMap(b => ["push", "pull"].map(d => ({ b, d, midi: b[d].midi[0] })));
-  const cand = [...MODES[sc.mode], 12].map(i => halves.filter(h => h.midi === start + i));
-  let best = cand[0].map(h => ({ cost: h.b.region === "D" ? 0 : .5, path: [h] }));
-  for (const cs of cand.slice(1)) best = cs.map(h => best.map(p => {
+  return [...MODES[sc.mode], 12].map(i => TREBLE_HALVES.filter(h => h.midi === start + i));
+}
+// Cheapest route for the given cost of a bellows reversal and of a row change; reach breaks ties.
+function route(cands, revCost, rowCost) {
+  let best = cands[0].map(h => ({ cost: h.b.region === "D" ? 0 : .5, path: [h] }));
+  for (const cs of cands.slice(1)) best = cs.map(h => best.map(p => {
     const q = p.path.at(-1);
-    return { cost: p.cost + (q.d !== h.d ? 1 : 0) + (q.b.region !== h.b.region ? 1.2 : 0) + Math.abs(q.b.cx - h.b.cx) / SP * .3, path: [...p.path, h] };
+    return { cost: p.cost + (q.d !== h.d ? revCost : 0) + (q.b.region !== h.b.region ? rowCost : 0) + Math.abs(q.b.cx - h.b.cx) / SP * .3, path: [...p.path, h] };
   }).reduce((a, x) => x.cost < a.cost ? x : a));
   return best.reduce((a, x) => x.cost < a.cost ? x : a).path;
 }
+const hkOf = h => h.b.key + h.d;
+const sameRoute = (a, b) => a.every((h, i) => h === b[i]);
+const rowChanges = steps => steps.slice(1).filter((h, i) => h.b.region !== steps[i].b.region).length;
 const reversals = steps => steps.slice(1).filter((h, i) => h.d !== steps[i].d).length;
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const routeStats = steps => `${plural(reversals(steps), "bellows reversal")}, ${plural(rowChanges(steps), "row change")}`;
 const pathLine = steps => `<div class="pathline">${steps.map(h => `<span class="pn c-${h.d}">${fmt(h.b[h.d].name)}<small>${h.d}</small></span>`).join('<span class="arr">→</span>')}</div>`;
 
 // state(b) -> { cls, click, push: { label, cls, sub }, pull: { label, cls, sub } }
@@ -370,11 +387,18 @@ document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => setTab(b.
 
 // ---------- keyboard explorer ----------
 const ex = { dir: lsGet("box.dir", "both"), hide: false, find: null, peek: new Set(), sounding: null,
-  scale: SCALE_BY_KEY[lsGet("box.scale", "")] ? lsGet("box.scale", "") : null, chord: null, path: true, degrees: false };
+  scale: SCALE_BY_KEY[lsGet("box.scale", "")] ? lsGet("box.scale", "") : null, chord: null, path: true, degrees: false, steps: null };
+// The route shown for the current scale: a preset, or one the user built by picking options.
+function exSteps(sc) {
+  if (ex.steps?.sc !== sc) ex.steps = Object.assign([...sc.routes.row], { sc });
+  return ex.steps;
+}
 // Highlight priority: chosen chord, else the scale (tonic lit, scale notes tinted), else "find a note".
 function exState(b) {
   const st = { click: true }, sc = SCALE_BY_KEY[ex.scale], ch = ex.chord && sc?.chords.find(x => x.sym === ex.chord);
-  const steps = sc && ex.path && !ch ? sc.path.map(h => h.b.key + h.d) : [];
+  const route = sc && ex.path && !ch ? exSteps(sc) : null, steps = route ? route.map(hkOf) : [];
+  const alts = new Map();   // other halves that could play a step of the route
+  if (route) for (const i of sc.options) for (const h of sc.cands[i]) if (h !== route[i]) alts.set(hkOf(h), i);
   for (const d of ["push", "pull"]) {
     const active = ex.dir === "both" || ex.dir === d, h = b[d], pc = PC[h.name], hk = b.key + d;
     let inSet = true, strong = active && ex.find === h.name;
@@ -386,9 +410,11 @@ function exState(b) {
     const lit = (active && strong) || ex.sounding === hk;
     const show = !ex.hide || lit || ex.peek.has(hk);
     const deg = sc && ex.degrees && b.kind !== "chord" && sc.pcs.includes(pc) ? String(sc.pcs.indexOf(pc) + 1) : null;
-    const i = steps.indexOf(hk);
-    st[d] = { label: show ? deg ?? h.label : "", cls: lit ? "on" : active && inSet ? "tint" : "dim", sub: i >= 0 ? i + 1 : null };
+    const i = steps.indexOf(hk), alt = alts.get(hk);
+    st[d] = { label: show ? deg ?? h.label : "", cls: (lit ? "on" : active && inSet ? "tint" : "dim") + (alt != null ? " alt" : ""),
+      sub: i >= 0 ? i + 1 : alt != null ? alt + 1 : null };
   }
+  if ((st.push.sub || st.pull.sub) && !steps.includes(b.key + "push") && !steps.includes(b.key + "pull")) st.cls = "alt";
   return st;
 }
 function scaleInfo(sc) {
@@ -399,8 +425,25 @@ function scaleInfo(sc) {
     <div class="row"><span class="label">Chords</span>
       ${sc.chords.map(c => `<button class="chip" data-chord="${c.sym}" aria-pressed="${ex.chord === c.sym}">${c.name}<span class="numeral">${c.numeral}</span></button>`).join("")}</div>
     <p class="note">${ch ? `<b>${ch.name}</b> = ${ch.pcs.map(p => fmt(NOTES[p])).join(" – ")}, lit on the treble. Bass side: ${esc(ch.how)}.`
-      : `The tonic ${fmt(sc.tonic)} is lit and scale notes are tinted${ex.path ? "; numbers show one way to play it up an octave" : ""}. Tap a chord to see its notes on the treble and how to back it on the bass side.`}</p>
+      : `The tonic ${fmt(sc.tonic)} is lit and scale notes are tinted${ex.path ? "; numbers show the route up an octave, and dashed buttons are alternatives" : ""}. Tap a chord to see its notes on the treble and how to back it on the bass side.`}</p>
+    ${ex.path && !ch ? routePanel(sc) : ""}
   </div>`;
+}
+// Presets plus one row per step that has a choice. Each option is labelled with what it costs next to
+// its neighbours in the current route: bellows reversals or row changes.
+function routePanel(sc) {
+  const cur = exSteps(sc), same = sameRoute(sc.routes.row, sc.routes.bellows);
+  const preset = (k, name) => `<button class="chip" data-route="${k}" aria-pressed="${sameRoute(cur, sc.routes[k])}">${name}<span class="numeral">${routeStats(sc.routes[k])}</span></button>`;
+  const cost = (i, h) => {
+    const nb = [cur[i - 1], cur[i + 1]].filter(Boolean);
+    const rev = nb.filter(n => n.d !== h.d).length, row = nb.filter(n => n.b.region !== h.b.region).length;
+    return [rev && plural(rev, "reversal"), row && plural(row, "row change")].filter(Boolean).join(", ") || "no changes";
+  };
+  return `<div class="row"><span class="label">Route</span>
+      ${same ? preset("row", "Best route") : preset("row", "Stay in the row") + preset("bellows", "Fewer bellows reversals")}</div>
+    <ul class="options">${sc.options.map(i => `<li><b>${i + 1} · ${fmt(sc.notes[i % 7])}</b>
+      ${sc.cands[i].map((h, j) => `<button class="chip ${h.d}" data-step="${i}" data-cand="${j}" aria-pressed="${cur[i] === h}">${REGION[h.b.region]} ${h.d}<span class="numeral">${cost(i, h)}</span></button>`).join("")}</li>`).join("")}</ul>
+    <p class="note">This route: ${routeStats(cur)}.</p>`;
 }
 function renderExplorer() {
   $("#view").innerHTML = `
@@ -447,8 +490,15 @@ function renderExplorer() {
     if (ex.chord) playFor(chordTone(sc.chords.find(x => x.sym === ex.chord)), 1000);
     renderExplorer();
   });
+  document.querySelectorAll("[data-route]").forEach(b => b.onclick = () => {
+    const sc = SCALE_BY_KEY[ex.scale]; ex.steps = Object.assign([...sc.routes[b.dataset.route]], { sc }); renderExplorer();
+  });
+  document.querySelectorAll("[data-step]").forEach(b => b.onclick = () => {
+    const sc = SCALE_BY_KEY[ex.scale], h = sc.cands[+b.dataset.step][+b.dataset.cand];
+    exSteps(sc)[+b.dataset.step] = h; playFor(h.b[h.d].midi, 500); renderExplorer();
+  });
   $("#playscale")?.addEventListener("click", () => {
-    const p = SCALE_BY_KEY[ex.scale].path;
+    const p = exSteps(SCALE_BY_KEY[ex.scale]);
     playSeq([...p, ...p.slice(0, -1).reverse()], h => { ex.sounding = h && h.b.key + h.d; if (tab === "board" && $("#board")) drawExplorer(); });
   });
   $("#hide").onchange = e => { ex.hide = e.target.checked; ex.peek.clear(); drawExplorer(); };
@@ -519,6 +569,17 @@ for (const row of ROWS) for (const dir of ["push", "pull"]) {
   DECKS.push({ key: "bass", title: "Bass side", dir: null, tag: "push + pull", cards,
     pattern: "Bass buttons: A/E, D/A, F♯/B, E/G. Each chord button plays the major chord of the bass button to its right." });
 }
+{
+  // Pitches that sit on both rows: tap the twin of a lit half.
+  const cards = [];
+  for (const h of TREBLE_HALVES) {
+    const twins = TREBLE_HALVES.filter(o => o.midi === h.midi && o.b.region !== h.b.region);
+    if (twins.length) cards.push({ id: `twin:${hkOf(h)}`, type: "twin", from: h, twins });
+  }
+  cards.sort((a, b) => a.from.midi - b.from.midi || (a.from.b.region === "D" ? -1 : 1));
+  DECKS.splice(4, 0, { key: "twins", title: "Cross-row twins", tag: "same pitch, both rows", cards,
+    pattern: "F♯ and C♯ are on both rows: D-row push F♯ = C♯-row pull F♯, and D-row pull C♯ = C♯-row push C♯. These are your scale options." });
+}
 for (const d of DECKS) d.group = "layout";
 // One deck per scale (notes, chords, play it), then one deck for backing each common chord on the bass side.
 for (const sc of SCALES) DECKS.push({
@@ -533,7 +594,7 @@ for (const sc of SCALES) DECKS.push({
     pattern: "Back each common chord: bass note + chord button in the same direction. Minors use the bass note under their relative major chord.",
     cards: [...chords.values()].map(ch => ({ id: `bchord:${ch.sym}`, type: "bchord", chord: ch })) });
 }
-const TYPES = [["loc", "Name the note"], ["find", "Find the button"], ["notes", "Scale notes"], ["chords", "Scale chords"], ["path", "Play the scale"], ["bchord", "Bass chords"]];
+const TYPES = [["loc", "Name the note"], ["find", "Find the button"], ["twin", "Cross-row twins"], ["notes", "Scale notes"], ["chords", "Scale chords"], ["path", "Play the scale"], ["bchord", "Bass chords"]];
 const targetsOf = c => BUTTONS.filter(b => b.region === c.region && (c.region !== "bass" || b.kind === c.kind) && b[c.dir].name === c.name);
 const findLabel = c => c.kind === "chord" ? `the ${fmt(c.name)} major chord` : c.kind === "bass" ? `bass note ${fmt(c.name)}` : fmt(c.name);
 const dirBadge = d => `<span class="badge" style="--c:var(--${d})">${d}</span>`;
@@ -710,6 +771,16 @@ function cardState(b) {
     }
     return st;
   }
+  if (c.type === "twin") {   // the given half is lit; tap its twin on the other row
+    const st = { cls: b.region === c.from.b.region ? "faint" : b.region === "bass" ? "faint" : "", click: b.region !== "bass" && (shown || b.region !== c.from.b.region) };
+    if (b === c.from.b) { st.cls = "target"; st[c.from.d] = { cls: "on", label: b[c.from.d].label }; }
+    if (shown) for (const d of ["push", "pull"]) {
+      const hk = b.key + d;
+      if (c.twins.some(t => hkOf(t) === hk)) { st.cls = "ok"; st[d] = { cls: "on", label: b[d].label }; }
+      else if (session.wrong === hk) { st.cls = "bad"; st[d] = { cls: "tint", label: b[d].label }; }
+    }
+    return st;
+  }
   if (c.type === "path" || c.type === "bchord") {
     // before the answer (or after a correct one) show what was tapped; after a miss show the expected buttons
     const region = c.type === "path" ? b.region !== "bass" : b.region === "bass";
@@ -736,6 +807,7 @@ const correct = () => session.targets?.some(b => b.key === session.picked);
 function promptOf(c) {
   if (c.type === "loc") return dirBadge(c.dir) + `<span>${c.btn.kind === "chord" ? "Which chord?" : c.btn.kind === "bass" ? "Which bass note?" : "Which note?"}</span>`;
   if (c.type === "find") return dirBadge(c.dir) + `<span>Find ${findLabel(c)} on the ${REGION[c.region]}</span>`;
+  if (c.type === "twin") return dirBadge(c.from.d) + `<span>This ${fmt(c.from.b[c.from.d].name)} has a twin on the ${REGION[c.from.b.region === "D" ? "Cs" : "D"]}. Tap it.</span>`;
   if (c.type === "notes") return `<span>Name the notes of <b>${c.scale.title}</b></span>`;
   if (c.type === "chords") return `<span>Which chords usually back <b>${c.scale.title}</b>?</span>`;
   if (c.type === "path") return `<span>Play <b>${c.scale.title}</b> up an octave from the lit ${fmt(c.scale.tonic)}</span>`;
@@ -754,11 +826,22 @@ function resultOf(c) {   // -> [html, suggested grade]
     return [`<div class="degrees" style="justify-content:center">${c.scale.notes.map((n, i) => `<span class="${i ? "" : "tonic"}">${fmt(n)}<small>${i + 1}</small></span>`).join("")}</div>`, 0];
   if (c.type === "chords")
     return [`<ul class="chordlist">${c.scale.chords.map(ch => `<li><b>${ch.name}<span class="numeral">${ch.numeral}</span></b> ${esc(cap(ch.how))}</li>`).join("")}</ul>`, 0];
+  if (c.type === "twin") {
+    const t = c.twins[0];
+    const how = `${REGION[t.b.region]} ${t.d}, button ${t.b.idx + 1}: same pitch, opposite bellows.`;
+    return session.ok ? [`<span class="yes">Correct.</span> ${how}`, 3] : [`${session.wrong ? `<span class="no">Not that one.</span> ` : ""}${how}`, 1];
+  }
   if (c.type === "path") {
-    const p = c.scale.path, n = reversals(p);
-    if (session.ok) return [`<span class="yes">Correct.</span>${pathLine(session.taps.map(hk => ({ b: BY_KEY[hk.slice(0, -4)], d: hk.slice(-4) })))}`, 3];
+    const sc = c.scale, p = sc.path;
+    const routes = sameRoute(sc.routes.row, sc.routes.bellows)
+      ? `<div>Best route (${routeStats(p)}):</div>${pathLine(p)}`
+      : `<div>Staying in the row (${routeStats(sc.routes.row)}):</div>${pathLine(sc.routes.row)}<div style="margin-top:8px">Fewer bellows reversals (${routeStats(sc.routes.bellows)}):</div>${pathLine(sc.routes.bellows)}`;
+    if (session.ok) {
+      const mine = session.taps.map(hk => ({ b: BY_KEY[hk.slice(0, -4)], d: hk.slice(-4) }));
+      return [`<span class="yes">Correct</span> (${routeStats(mine)}).${pathLine(mine)}${sc.options.length ? `<div class="hint" style="margin-top:6px">Options at ${sc.options.map(i => fmt(sc.notes[i % 7])).join(" and ")}: either row works. Compare routes on the Keyboard tab.</div>` : ""}`, 3];
+    }
     const miss = session.wrong ? `<span class="no">${esc(halfOf(session.wrong).label)} isn’t next; it’s ${fmt(p[session.taps.length].b[p[session.taps.length].d].name)}.</span> ` : "";
-    return [`${miss}One way, with ${n} bellows change${n === 1 ? "" : "s"}:${pathLine(p)}`, 1];
+    return [`${miss}${routes}`, 1];
   }
   const how = `${c.chord.name}: ${esc(c.chord.how)}.`;
   if (session.ok) return [`<span class="yes">Correct.</span> ${how}`, 3];
@@ -771,10 +854,10 @@ function renderCard() {
   const nLearn = q.filter(x => stateOf(x.d.key, x.c)?.s === "learn").length + (st?.s === "learn" ? 1 : 0);
   const nRev = q.length + 1 - nNew - nLearn;
   const [result, suggest] = resultOf(c);
-  const view = { loc: d.key === "bass" ? "bass" : "treble", find: d.key === "bass" ? "bass" : "treble", path: "treble", bchord: "bass",
+  const view = { twin: "treble", loc: d.key === "bass" ? "bass" : "treble", find: d.key === "bass" ? "bass" : "treble", path: "treble", bchord: "bass",
     notes: session.shown && "treble", chords: null }[c.type];
-  const tapping = c.type === "find" || c.type === "path" || c.type === "bchord";
-  const hint = c.type === "path" ? "Tap each next note, either row · " : c.type === "bchord" ? "Tap the bass and chord halves · " : c.type === "find" ? "Tap the button · " : "Say it to yourself, then ";
+  const tapping = ["find", "path", "bchord", "twin"].includes(c.type);
+  const hint = c.type === "path" ? "Tap each next note, either row · " : c.type === "bchord" ? "Tap the bass and chord halves · " : c.type === "find" || c.type === "twin" ? "Tap the button · " : "Say it to yourself, then ";
   $("#view").innerHTML = `
     <section class="study">
       <div class="study-head">
@@ -802,6 +885,11 @@ function renderCard() {
     else if (c.type === "find") { session.picked = b.key; reveal(); }
     else if (c.type === "path") tapPath(c, b, dir);
     else if (c.type === "bchord") tapChord(c, b, dir);
+    else if (c.type === "twin") {
+      const hk = b.key + dir; playFor(b[dir].midi, 500);
+      if (c.twins.some(t => hkOf(t) === hk)) session.ok = true; else session.wrong = hk;
+      session.shown = true; renderCard();
+    }
   });
 }
 function tapPath(c, b, d) {
@@ -826,6 +914,7 @@ function tapChord(c, b, d) {
 function answerSound() {
   const { c } = session.cur;
   if (c.type === "loc") return playFor(c.btn[c.dir].midi);
+  if (c.type === "twin") return playSeq([c.from, c.twins[0]], null, 600);
   if (c.type === "find") return playFor((correct() ? BY_KEY[session.picked] : session.targets[0])[c.dir].midi);
   if (c.type === "notes" || c.type === "path") return playSeq(c.scale.path);
   if (c.type === "bchord") return playFor(chordTone(c.chord), 900);

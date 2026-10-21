@@ -1,6 +1,6 @@
 # C♯/D button accordion trainer
 
-An interactive chart and spaced-repetition flashcards for memorizing the layout of a 23-button C♯/D button accordion with the modern 8-button bass layout.
+An interactive chart and spaced-repetition flashcards for memorizing the layout of a McNeela 23-button C♯/D button accordion with the modern 8-button bass layout.
 
 **Open it:** https://reedharder.github.io/accordion-layout/
 
@@ -12,6 +12,7 @@ The full layout, drawn the way the chart shows it: left half of each button is p
 - **Bellows: Push / Pull** dims the other direction, and either half of a button then plays that direction, as on the real box.
 - **Find a note** lights every place a note sits.
 - **Scale** picks a common Irish/folk key (D, G, A major; E, A dorian; E, B minor; A, D mixolydian). The tonic is lit, scale notes are tinted, and numbers show one route up an octave. **Play up & down** plays that route, **Degrees** relabels the buttons 1–7, and the chord chips (with Roman numerals) light each chord's notes on the treble and the buttons that back it on the bass side.
+- **Route options.** F♯ and C♯ are on both rows in opposite bellows directions (D-row push F♯ = C♯-row pull F♯; D-row pull C♯ = C♯-row push C♯). With a scale selected, alternative buttons for a step are drawn dashed, and the Route panel offers *Stay in the row* (more bellows reversals) vs *Fewer bellows reversals* (more row changes), plus a per-note picker showing what each choice costs next to its neighbours.
 - **Hide note names** blanks the chart so you can quiz yourself; pressing a button peeks at it.
 
 ## Flashcards
@@ -22,7 +23,8 @@ Five decks, meant to be learned in order. Each deck is one row and one bellows d
 2. D row, pull: G – B – C♯ – E
 3. C♯ row, push: C♯ – F – G♯
 4. C♯ row, pull: F♯ – A♯ – C – D♯
-5. Bass side, push and pull (each chord button is the major chord of the bass button to its right)
+5. Cross-row twins: a lit F♯ or C♯, tap its twin on the other row
+6. Bass side, push and pull (each chord button is the major chord of the bass button to its right)
 
 Then a **Scales & chords** section: one deck per scale with three cards (name its notes, name its usual chords, play it up an octave by tapping the buttons in order), plus a **Bass-side chords** deck where you tap the bass and chord halves that back each chord.
 
