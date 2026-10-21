@@ -11,6 +11,7 @@ The full layout, drawn the way the chart shows it: left half of each button is p
 - Press and hold any half to hear it (synthesized reed tone; bass buttons play root + octave, chord buttons play a major triad).
 - **Bellows: Push / Pull** dims the other direction, and either half of a button then plays that direction, as on the real box.
 - **Find a note** lights every place a note sits.
+- **Scale** picks a common Irish/folk key (D, G, A major; E, A dorian; E, B minor; A, D mixolydian). The tonic is lit, scale notes are tinted, and numbers show one route up an octave. **Play up & down** plays that route, **Degrees** relabels the buttons 1–7, and the chord chips (with Roman numerals) light each chord's notes on the treble and the buttons that back it on the bass side.
 - **Hide note names** blanks the chart so you can quiz yourself; pressing a button peeks at it.
 
 ## Flashcards
@@ -23,7 +24,9 @@ Five decks, meant to be learned in order. Each deck is one row and one bellows d
 4. C♯ row, pull: F♯ – A♯ – C – D♯
 5. Bass side, push and pull (each chord button is the major chord of the bass button to its right)
 
-Two card types, which you can toggle:
+Then a **Scales & chords** section: one deck per scale with three cards (name its notes, name its usual chords, play it up an octave by tapping the buttons in order), plus a **Bass-side chords** deck where you tap the bass and chord halves that back each chord.
+
+Layout card types, which you can toggle along with the scale ones:
 
 - **Name the note:** one button is highlighted on a blank chart with a direction; say the note, then reveal (it plays the tone).
 - **Find the button:** a note and direction are given; tap the button. It's graded on the spot, and any button that plays the note counts, since the rows repeat.
@@ -33,5 +36,7 @@ Grading is Again / Hard / Good / Easy with Anki-style intervals. Progress is sto
 ## Notes
 
 Note names come from the "23 button C#/D modern bass layout" chart. Octaves are a guess: each treble row is assumed to rise left to right from C♯3 / D3, so the pitches are only approximate.
+
+Scale routes minimize bellows reversals, then row changes; the flashcards accept any button with the right pitch. Chords are the usual trad Irish backing choices. The bass side has only major chords (A, D, E, F♯, B, G), so minors use the bass note under the relative major chord (Em = E bass + G chord on pull, F♯m = F♯ bass + A chord on push) or the bass note alone (Am, Bm), and C has no bass-side option.
 
 Everything is in `index.html`, with no build step.

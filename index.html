@@ -93,6 +93,20 @@ header.top p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
 .board .lbl.sm { font-size: 13px; }
 .board .lbl.on { fill: var(--on-ink); }
 .board .lbl.dim { fill: var(--muted); opacity: .6; }
+.board .sub { font-family: var(--f-mono); font-size: 10px; text-anchor: middle; dominant-baseline: central; fill: var(--ink); pointer-events: none; }
+.board .sub.on { fill: var(--on-ink); }
+.degrees { display: flex; gap: 6px; flex-wrap: wrap; }
+.degrees span { display: flex; flex-direction: column; align-items: center; min-width: 44px; padding: 4px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--slab); font-weight: 600; }
+.degrees span.tonic { border-color: var(--ink); }
+.degrees small { font-family: var(--f-mono); color: var(--muted); font-size: 12px; font-weight: 400; }
+.numeral { font-size: 12px; opacity: .7; margin-left: 4px; }
+.scaleinfo { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid var(--rule); border-radius: 8px; }
+.pathline { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; align-items: center; font-size: 15px; margin-top: 6px; }
+.pn { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.15; font-weight: 600; }
+.pn small { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; font-weight: 500; }
+.arr { color: var(--muted); }
+.chordlist { list-style: none; padding: 0; margin: 6px auto 0; display: flex; flex-direction: column; gap: 6px; text-align: left; max-width: 62ch; font-size: 15px; }
+.chordlist b { display: inline-block; min-width: 64px; }
 .board .btn-g.faint { opacity: .28; }
 .board .btn-g.target .ring { stroke-width: 3.5; }
 .board .btn-g.ok .ring { stroke: var(--ok); stroke-width: 4; }
@@ -165,6 +179,7 @@ header.top p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
   <footer class="foot">
     <span>Left half of each button = push, right half = pull. Chords: + = major. Layout drawn from the “23 button C#/D modern bass layout” chart.</span>
     <span>Tones are synthesized and the octaves are approximate: each row is assumed to rise left to right from about C♯3/D3. Note names are exact.</span>
+    <span>Scales: the numbered path is one sensible route up an octave (fewest bellows reversals, then fewest row changes). Chords are the usual trad Irish backing choices; on this bass side a minor is backed by its bass note under the relative major chord when the bellows directions match, otherwise by the bass note alone.</span>
     <span>Flashcards are scheduled Again / Hard / Good / Easy, spaced like Anki. Progress is saved in this browser; a card counts as mastered once its interval reaches 21 days.</span>
   </footer>
 </div>
@@ -214,9 +229,75 @@ BASS.forEach(([kind, push, pull], j) => BUTTONS.push({
   pull: { name: pull, label: fmt(pull) + (kind === "chord" ? "+" : ""), midi: bassTone(kind, pull) },
 }));
 const BY_KEY = Object.fromEntries(BUTTONS.map(b => [b.key, b]));
+const halfOf = hk => BY_KEY[hk.slice(0, -4)][hk.slice(-4)];   // "D4pull" -> that half
 const describe = (b, d) => `${REGION[b.region]} ${b.region === "bass" ? b.kind : "button"} ${b.region === "bass" ? "" : b.idx + 1} ${d}`.replace(/\s+/g, " ");
 
-// state(b) -> { cls, click, push: { label, cls }, pull: { label, cls } }
+// ---------- scales ----------
+const MODES = { major: [0, 2, 4, 5, 7, 9, 11], dorian: [0, 2, 3, 5, 7, 9, 10], minor: [0, 2, 3, 5, 7, 8, 10], mixolydian: [0, 2, 4, 5, 7, 9, 10] };
+const NUMERAL = { 0: "I", 2: "II", 3: "♭III", 4: "III", 5: "IV", 7: "V", 8: "♭VI", 9: "VI", 10: "♭VII", 11: "VII" };
+// Common keys for Irish/folk tunes, each with the chords a trad backer reaches for first.
+const SCALES = [
+  ["D", "major", ["D", "G", "A", "Bm"]],
+  ["G", "major", ["G", "C", "D", "Em"]],
+  ["A", "major", ["A", "D", "E", "F#m"]],
+  ["E", "dorian", ["Em", "D", "G", "A"]],
+  ["A", "dorian", ["Am", "G", "C", "D"]],
+  ["E", "minor", ["Em", "D", "C", "G"]],
+  ["B", "minor", ["Bm", "A", "G", "D"]],
+  ["A", "mixolydian", ["A", "G", "D", "Em"]],
+  ["D", "mixolydian", ["D", "C", "G", "Am"]],
+].map(([tonic, mode, chords]) => {
+  const pcs = MODES[mode].map(i => (PC[tonic] + i) % 12);
+  const sc = { key: (tonic + "-" + mode).toLowerCase(), tonic, mode, title: `${fmt(tonic)} ${mode}`, pcs, notes: pcs.map(p => NOTES[p]) };
+  sc.chords = chords.map(sym => chordInfo(sym, sc));
+  sc.path = scalePath(sc);
+  return sc;
+});
+const SCALE_BY_KEY = Object.fromEntries(SCALES.map(s => [s.key, s]));
+
+function chordInfo(sym, sc) {
+  const minor = sym.endsWith("m"), root = minor ? sym.slice(0, -1) : sym, r = PC[root];
+  const num = NUMERAL[(r - PC[sc.tonic] + 12) % 12];
+  return { sym, root, minor, name: fmt(root) + (minor ? "m" : ""), pcs: [r, (r + (minor ? 3 : 4)) % 12, (r + 7) % 12],
+    numeral: minor ? num.toLowerCase() : num, ...bassWays(root, minor) };
+}
+// How to back a chord on the 8 bass buttons: bass note + chord button in the same bellows direction.
+// A minor chord uses its relative major chord over the bass note (an m7 sound); failing that, the bass note alone.
+function bassWays(root, minor) {
+  const opts = [];
+  for (const dir of ["push", "pull"]) {
+    const bass = BUTTONS.find(b => b.kind === "bass" && b[dir].name === root);
+    if (!bass) continue;
+    const want = minor ? NOTES[(PC[root] + 3) % 12] : root;
+    const chord = BUTTONS.find(b => b.kind === "chord" && b[dir].name === want);
+    opts.push({ dir, taps: chord ? [bass.key + dir, chord.key + dir] : [bass.key + dir], chord: chord && want });
+  }
+  const full = opts.filter(o => o.chord), ways = full.length ? full : opts, r = fmt(root);
+  if (!ways.length) return { ways, how: `no ${r} bass or chord on this side, so leave the bass out or play the chord on the treble.` };
+  const desc = o => o.chord ? `${r} bass + ${fmt(o.chord)} chord` : `${r} bass alone`;
+  let how = ways.length === 2 && desc(ways[0]) === desc(ways[1]) ? `${desc(ways[0])}, push or pull` : ways.map(o => `${desc(o)} on ${o.dir}`).join(", or ");
+  if (minor) how += full.length ? ` (sounds as ${r}m7)` : ` (no ${r}m chord button)`;
+  return { ways, how };
+}
+const chordTone = ch => ch.ways.length ? ch.ways[0].taps.flatMap(t => halfOf(t).midi) : ch.pcs.map(p => lowestFrom(NOTES[p], 52));
+
+// One octave up from the tonic (G3 or above). Picks the route with the fewest bellows reversals,
+// then the fewest row changes, then the least reach. Flashcards accept any button with the right pitch.
+function scalePath(sc) {
+  const start = lowestFrom(sc.tonic, 55);
+  const halves = BUTTONS.filter(b => b.kind === "note").flatMap(b => ["push", "pull"].map(d => ({ b, d, midi: b[d].midi[0] })));
+  const cand = [...MODES[sc.mode], 12].map(i => halves.filter(h => h.midi === start + i));
+  let best = cand[0].map(h => ({ cost: h.b.region === "D" ? 0 : .5, path: [h] }));
+  for (const cs of cand.slice(1)) best = cs.map(h => best.map(p => {
+    const q = p.path.at(-1);
+    return { cost: p.cost + (q.d !== h.d ? 1 : 0) + (q.b.region !== h.b.region ? 1.2 : 0) + Math.abs(q.b.cx - h.b.cx) / SP * .3, path: [...p.path, h] };
+  }).reduce((a, x) => x.cost < a.cost ? x : a));
+  return best.reduce((a, x) => x.cost < a.cost ? x : a).path;
+}
+const reversals = steps => steps.slice(1).filter((h, i) => h.d !== steps[i].d).length;
+const pathLine = steps => `<div class="pathline">${steps.map(h => `<span class="pn c-${h.d}">${fmt(h.b[h.d].name)}<small>${h.d}</small></span>`).join('<span class="arr">→</span>')}</div>`;
+
+// state(b) -> { cls, click, push: { label, cls, sub }, pull: { label, cls, sub } }
 const VIEW = { all: "-62 36 872 454", treble: "-62 352 872 136", bass: "170 40 460 186" };
 function boardSvg(state, view = "all") {
   let s = `<svg class="board${view === "bass" ? " narrow" : ""}" viewBox="${VIEW[view]}" aria-label="Button layout">`;
@@ -233,7 +314,8 @@ function btnSvg(b, st) {
     const h = st[d] || {};
     const a11y = st.click ? ` tabindex="0" role="button" aria-label="${esc(describe(b, d))}"` : "";
     return `<path class="half ${d} ${h.cls || ""}" d="M${cx} ${top} A${R} ${R} 0 0 ${sweep} ${cx} ${bot} Z" data-k="${b.key}" data-dir="${d}"${a11y}/>`
-      + (h.label ? `<text class="lbl${sm} ${h.cls || ""}" x="${x}" y="${cy}">${esc(h.label)}</text>` : "");
+      + (h.label ? `<text class="lbl${sm} ${h.cls || ""}" x="${x}" y="${h.sub ? cy - 6 : cy}">${esc(h.label)}</text>` : "")
+      + (h.sub ? `<text class="sub ${h.cls || ""}" x="${x}" y="${h.label ? cy + 12 : cy}">${h.sub}</text>` : "");
   };
   return `<g class="btn-g ${st.cls || ""}">${half("push", 0, cx - R * .5)}${half("pull", 1, cx + R * .5)}`
     + `<line class="div" x1="${cx}" x2="${cx}" y1="${top}" y2="${bot}"/><circle class="ring" cx="${cx}" cy="${cy}" r="${R}"/></g>`;
@@ -270,27 +352,55 @@ function startTone(midis) {
 }
 let held = null;
 function playFor(midis, ms = 700) { held?.stop(); const h = held = startTone(midis); setTimeout(() => h.stop(), ms); }
+let seqTimers = [];
+function playSeq(steps, onStep, gap = 380) {
+  seqTimers.forEach(clearTimeout);
+  seqTimers = steps.map((h, i) => setTimeout(() => { playFor(h.b[h.d].midi, gap - 40); onStep?.(h); }, i * gap));
+  seqTimers.push(setTimeout(() => onStep?.(null), steps.length * gap));
+}
 
 // ---------- tabs ----------
 let tab = lsGet("box.tab", "board");
 function setTab(t) {
-  tab = t; lsSet("box.tab", t); session = null;
+  tab = t; lsSet("box.tab", t); session = null; seqTimers.forEach(clearTimeout);
   document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
   t === "board" ? renderExplorer() : renderHome();
 }
 document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => setTab(b.dataset.tab));
 
 // ---------- keyboard explorer ----------
-const ex = { dir: lsGet("box.dir", "both"), hide: false, find: null, peek: new Set(), sounding: null };
+const ex = { dir: lsGet("box.dir", "both"), hide: false, find: null, peek: new Set(), sounding: null,
+  scale: SCALE_BY_KEY[lsGet("box.scale", "")] ? lsGet("box.scale", "") : null, chord: null, path: true, degrees: false };
+// Highlight priority: chosen chord, else the scale (tonic lit, scale notes tinted), else "find a note".
 function exState(b) {
-  const st = { click: true };
+  const st = { click: true }, sc = SCALE_BY_KEY[ex.scale], ch = ex.chord && sc?.chords.find(x => x.sym === ex.chord);
+  const steps = sc && ex.path && !ch ? sc.path.map(h => h.b.key + h.d) : [];
   for (const d of ["push", "pull"]) {
-    const active = ex.dir === "both" || ex.dir === d, h = b[d];
-    const lit = (active && ex.find === h.name) || ex.sounding === b.key + d;
-    const show = !ex.hide || lit || ex.peek.has(b.key + d);
-    st[d] = { label: show ? h.label : "", cls: lit ? "on" : active ? "tint" : "dim" };
+    const active = ex.dir === "both" || ex.dir === d, h = b[d], pc = PC[h.name], hk = b.key + d;
+    let inSet = true, strong = active && ex.find === h.name;
+    if (ch) inSet = strong = b.region === "bass" ? ch.ways.some(w => w.taps.includes(hk)) : ch.pcs.includes(pc);
+    else if (sc) {
+      inSet = b.kind === "chord" ? sc.chords.some(x => !x.minor && x.root === h.name) : sc.pcs.includes(pc);
+      strong = b.kind !== "chord" && pc === PC[sc.tonic];
+    }
+    const lit = (active && strong) || ex.sounding === hk;
+    const show = !ex.hide || lit || ex.peek.has(hk);
+    const deg = sc && ex.degrees && b.kind !== "chord" && sc.pcs.includes(pc) ? String(sc.pcs.indexOf(pc) + 1) : null;
+    const i = steps.indexOf(hk);
+    st[d] = { label: show ? deg ?? h.label : "", cls: lit ? "on" : active && inSet ? "tint" : "dim", sub: i >= 0 ? i + 1 : null };
   }
   return st;
+}
+function scaleInfo(sc) {
+  if (!sc) return "";
+  const ch = sc.chords.find(x => x.sym === ex.chord);
+  return `<div class="scaleinfo">
+    <div class="degrees" aria-label="Scale notes">${sc.notes.map((n, i) => `<span class="${i ? "" : "tonic"}">${fmt(n)}<small>${i + 1}</small></span>`).join("")}</div>
+    <div class="row"><span class="label">Chords</span>
+      ${sc.chords.map(c => `<button class="chip" data-chord="${c.sym}" aria-pressed="${ex.chord === c.sym}">${c.name}<span class="numeral">${c.numeral}</span></button>`).join("")}</div>
+    <p class="note">${ch ? `<b>${ch.name}</b> = ${ch.pcs.map(p => fmt(NOTES[p])).join(" – ")}, lit on the treble. Bass side: ${esc(ch.how)}.`
+      : `The tonic ${fmt(sc.tonic)} is lit and scale notes are tinted${ex.path ? "; numbers show one way to play it up an octave" : ""}. Tap a chord to see its notes on the treble and how to back it on the bass side.`}</p>
+  </div>`;
 }
 function renderExplorer() {
   $("#view").innerHTML = `
@@ -306,6 +416,16 @@ function renderExplorer() {
         ${NOTES.map(n => `<button class="chip" data-find="${n}" aria-pressed="${ex.find === n}">${fmt(n)}</button>`).join("")}
       </div>
       <div class="row">
+        <label class="label" for="scale">Scale</label>
+        <select id="scale" class="chip"><option value="">none</option>
+          ${Object.keys(MODES).map(m => `<optgroup label="${cap(m)}">${SCALES.filter(s => s.mode === m).map(s => `<option value="${s.key}" ${ex.scale === s.key ? "selected" : ""}>${s.title}</option>`).join("")}</optgroup>`).join("")}
+        </select>
+        ${ex.scale ? `<button class="chip" id="playscale">▶ Play up &amp; down</button>
+          <button class="chip" data-opt="path" aria-pressed="${ex.path}">Path</button>
+          <button class="chip" data-opt="degrees" aria-pressed="${ex.degrees}">Degrees</button>` : ""}
+      </div>
+      ${scaleInfo(SCALE_BY_KEY[ex.scale])}
+      <div class="row">
         <label class="hint" style="display:inline-flex;gap:8px;align-items:center;font-size:14px;color:var(--ink)">
           <input type="checkbox" id="hide" ${ex.hide ? "checked" : ""}> Hide note names (press a button to peek)
         </label>
@@ -314,7 +434,23 @@ function renderExplorer() {
     </section>`;
   drawExplorer();
   document.querySelectorAll("[data-dir]").forEach(b => b.onclick = () => { ex.dir = b.dataset.dir; lsSet("box.dir", ex.dir); renderExplorer(); });
-  document.querySelectorAll("[data-find]").forEach(b => b.onclick = () => { ex.find = ex.find === b.dataset.find ? null : b.dataset.find; renderExplorer(); });
+  document.querySelectorAll("[data-find]").forEach(b => b.onclick = () => {
+    ex.find = ex.find === b.dataset.find ? null : b.dataset.find;
+    if (ex.find) { ex.scale = ex.chord = null; lsSet("box.scale", ""); }
+    renderExplorer();
+  });
+  $("#scale").onchange = e => { ex.scale = e.target.value || null; ex.chord = ex.find = null; lsSet("box.scale", ex.scale || ""); renderExplorer(); };
+  document.querySelectorAll("[data-opt]").forEach(b => b.onclick = () => { ex[b.dataset.opt] = !ex[b.dataset.opt]; renderExplorer(); });
+  document.querySelectorAll("[data-chord]").forEach(b => b.onclick = () => {
+    const sc = SCALE_BY_KEY[ex.scale];
+    ex.chord = ex.chord === b.dataset.chord ? null : b.dataset.chord;
+    if (ex.chord) playFor(chordTone(sc.chords.find(x => x.sym === ex.chord)), 1000);
+    renderExplorer();
+  });
+  $("#playscale")?.addEventListener("click", () => {
+    const p = SCALE_BY_KEY[ex.scale].path;
+    playSeq([...p, ...p.slice(0, -1).reverse()], h => { ex.sounding = h && h.b.key + h.d; if (tab === "board" && $("#board")) drawExplorer(); });
+  });
   $("#hide").onchange = e => { ex.hide = e.target.checked; ex.peek.clear(); drawExplorer(); };
   const board = $("#board");
   board.addEventListener("pointerdown", e => {
@@ -380,22 +516,38 @@ for (const row of ROWS) for (const dir of ["push", "pull"]) {
   for (const kind of ["bass", "chord"]) for (const dir of ["push", "pull"])
     for (const n of new Set(btns.filter(b => b.kind === kind).map(b => b[dir].name)))
       cards.push({ id: `find:bass:${kind}:${dir}:${n}`, type: "find", dir, region: "bass", kind, name: n });
-  DECKS.push({ key: "bass", title: "Bass side", dir: null, cards,
+  DECKS.push({ key: "bass", title: "Bass side", dir: null, tag: "push + pull", cards,
     pattern: "Bass buttons: A/E, D/A, F♯/B, E/G. Each chord button plays the major chord of the bass button to its right." });
 }
-const TYPES = [["loc", "Name the note"], ["find", "Find the button"]];
+for (const d of DECKS) d.group = "layout";
+// One deck per scale (notes, chords, play it), then one deck for backing each common chord on the bass side.
+for (const sc of SCALES) DECKS.push({
+  key: "sc-" + sc.key, group: "scales", title: sc.title,
+  pattern: `${sc.notes.map(fmt).join(" ")} · chords ${sc.chords.map(c => c.name).join(", ")}`,
+  cards: ["notes", "chords", "path"].map(type => ({ id: `${type}:${sc.key}`, type, scale: sc })),
+});
+{
+  const chords = new Map();
+  for (const sc of SCALES) for (const ch of sc.chords) if (ch.ways.length && !chords.has(ch.sym)) chords.set(ch.sym, ch);
+  DECKS.push({ key: "bass-chords", group: "scales", title: "Bass-side chords", tag: "push + pull",
+    pattern: "Back each common chord: bass note + chord button in the same direction. Minors use the bass note under their relative major chord.",
+    cards: [...chords.values()].map(ch => ({ id: `bchord:${ch.sym}`, type: "bchord", chord: ch })) });
+}
+const TYPES = [["loc", "Name the note"], ["find", "Find the button"], ["notes", "Scale notes"], ["chords", "Scale chords"], ["path", "Play the scale"], ["bchord", "Bass chords"]];
 const targetsOf = c => BUTTONS.filter(b => b.region === c.region && (c.region !== "bass" || b.kind === c.kind) && b[c.dir].name === c.name);
 const findLabel = c => c.kind === "chord" ? `the ${fmt(c.name)} major chord` : c.kind === "bass" ? `bass note ${fmt(c.name)}` : fmt(c.name);
 const dirBadge = d => `<span class="badge" style="--c:var(--${d})">${d}</span>`;
 
-const prefs = Object.assign({ newPerSession: 15, types: TYPES.map(t => t[0]) }, lsGet("box.prefs", {}));
+// prefs.off lists disabled card types, so types added later start enabled (older saves stored the enabled list).
+const prefs = Object.assign({ newPerSession: 15, off: [] }, lsGet("box.prefs", {}));
+if (prefs.types) { prefs.off = ["loc", "find"].filter(t => !prefs.types.includes(t)); delete prefs.types; }
 const progress = {};
 for (const d of DECKS) progress[d.key] = lsGet("box.p." + d.key, {});
 const saveDeck = key => lsSet("box.p." + key, progress[key]);
 
 // ---------- scheduling ----------
 const MIN = 60e3, DAY = 864e5;
-const enabled = c => prefs.types.includes(c.type);
+const enabled = c => !prefs.off.includes(c.type);
 const stateOf = (dk, c) => progress[dk][c.id];
 function bucket(st, now) {
   if (!st) return "new";
@@ -453,29 +605,37 @@ function renderHome() {
       </div>
       <div class="row">
         <span class="label">Card types</span>
-        ${TYPES.map(([k, l]) => `<button class="chip" data-type="${k}" aria-pressed="${prefs.types.includes(k)}">${l}</button>`).join("")}
+        ${TYPES.map(([k, l]) => `<button class="chip" data-type="${k}" aria-pressed="${!prefs.off.includes(k)}">${l}</button>`).join("")}
         <label class="label" for="npc" style="margin-left:auto">New per session</label>
         <select id="npc" class="chip">${[5, 10, 15, 30, 999].map(n => `<option value="${n}" ${prefs.newPerSession == n ? "selected" : ""}>${n === 999 ? "all" : n}</option>`).join("")}</select>
       </div>
-      <p class="note">Work through the decks in order: each one is a single row and a single bellows direction, so you learn one repeating pattern at a time. Push patterns are short triads and come first; pulls are where the irregular note pairings live. <b>Name the note</b> shows a highlighted button and asks what it plays. <b>Find the button</b> names a note and you tap where it is; it’s graded on the spot.</p>
-      <div class="decks">${DECKS.map(deckHtml).join("")}</div>
+      ${section("layout", "Layout", `Work through these in order: each deck is a single row and a single bellows direction, so you learn one repeating pattern at a time. Push patterns are short triads and come first; pulls are where the irregular note pairings live. <b>Name the note</b> shows a highlighted button and asks what it plays. <b>Find the button</b> names a note and you tap where it is; it’s graded on the spot.`)}
+      ${section("scales", "Scales &amp; chords", `The common keys for Irish and folk tunes, roughly most-played first. Each scale deck asks you to <b>name its notes</b>, <b>name its usual chords</b>, and <b>play it</b> up an octave by tapping the buttons in order (any button with the right pitch counts). <b>Bass chords</b> asks you to tap the bass and chord buttons that back each chord.`)}
     </section>`;
   $("#studyAll").onclick = () => startSession(DECKS.map(d => d.key));
   document.querySelectorAll("[data-type]").forEach(b => b.onclick = () => {
-    const k = b.dataset.type, on = prefs.types.includes(k);
-    prefs.types = on ? prefs.types.filter(x => x !== k) : [...prefs.types, k];
+    const k = b.dataset.type;
+    prefs.off = prefs.off.includes(k) ? prefs.off.filter(x => x !== k) : [...prefs.off, k];
     lsSet("box.prefs", prefs); renderHome();
   });
   $("#npc").onchange = e => { prefs.newPerSession = +e.target.value; lsSet("box.prefs", prefs); };
   document.querySelectorAll("[data-study]").forEach(b => b.onclick = () => startSession([b.dataset.study]));
+  document.querySelectorAll("[data-group]").forEach(b => b.onclick = () => startSession(DECKS.filter(d => d.group === b.dataset.group).map(d => d.key)));
   document.querySelectorAll("[data-reset]").forEach(b => b.onclick = () => armReset(b));
+}
+function section(group, title, note) {
+  const decks = DECKS.filter(d => d.group === group);
+  return `<section style="display:flex;flex-direction:column;gap:10px">
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0;font-size:20px">${title}</h2><button class="btn small" data-group="${group}">Study this section</button></div>
+    <p class="note">${note}</p>
+    <div class="decks">${decks.map(deckHtml).join("")}</div></section>`;
 }
 function deckHtml(d, i) {
   const s = deckStats(d), t = s.total || 1, pct = x => (100 * x / t).toFixed(2) + "%";
   const avail = s.due + s.learn + s.new;
   return `<div class="deck">
     <div class="step">${i + 1}</div>
-    <div class="t">${d.title}${d.dir ? `<span class="dir c-${d.dir}">${d.dir}</span>` : `<span class="dir" style="color:var(--muted)">push + pull</span>`}</div>
+    <div class="t">${d.title}${d.dir ? `<span class="dir c-${d.dir}">${d.dir}</span>` : d.tag ? `<span class="dir" style="color:var(--muted)">${d.tag}</span>` : ""}</div>
     <div><button class="btn small primary" data-study="${d.key}" ${avail ? "" : "disabled"}>Study</button></div>
     <div class="pat">${d.pattern}</div>
     <div class="bar" role="img" aria-label="${s.mastered} mastered, ${s.review + s.due} in review, ${s.learn} learning, ${s.new} new of ${s.total}">
@@ -527,8 +687,11 @@ function pick() {
   return i < 0 ? null : q.splice(i, 1)[0];
 }
 function next() {
-  session.cur = pick(); session.shown = false; session.picked = null;
+  seqTimers.forEach(clearTimeout);
+  session.cur = pick(); session.shown = false; session.picked = null; session.wrong = null; session.ok = false; session.taps = [];
   if (!session.cur) return renderDone();
+  const { c } = session.cur;
+  if (c.type === "path") session.taps = [c.scale.path[0].b.key + c.scale.path[0].d];   // the starting note is given
   renderCard();
 }
 function cardState(b) {
@@ -537,6 +700,28 @@ function cardState(b) {
     const st = { cls: b === c.btn ? "target" : b.region === c.btn.region ? "" : "faint", click: shown };
     if (b === c.btn) for (const d of ["push", "pull"])
       st[d] = { label: shown ? b[d].label : d === c.dir ? "?" : "", cls: d === c.dir ? "on" : shown ? "tint" : "" };
+    return st;
+  }
+  if (c.type === "notes") {   // revealed: the scale on the treble, tonic lit
+    const st = { click: true, cls: b.region === "bass" ? "faint" : "" };
+    for (const d of ["push", "pull"]) {
+      const pc = PC[b[d].name], inScale = c.scale.pcs.includes(pc);
+      st[d] = { label: inScale ? b[d].label : "", cls: pc === PC[c.scale.tonic] ? "on" : inScale ? "tint" : "dim" };
+    }
+    return st;
+  }
+  if (c.type === "path" || c.type === "bchord") {
+    // before the answer (or after a correct one) show what was tapped; after a miss show the expected buttons
+    const region = c.type === "path" ? b.region !== "bass" : b.region === "bass";
+    const st = { cls: region ? "" : "faint", click: region };
+    const showing = shown && !session.ok
+      ? (c.type === "path" ? c.scale.path.map(h => h.b.key + h.d) : c.chord.ways.flatMap(w => w.taps))
+      : session.taps;
+    for (const d of ["push", "pull"]) {
+      const hk = b.key + d, i = showing.indexOf(hk);
+      if (i >= 0) st[d] = { cls: "on", label: b[d].label, sub: c.type === "path" ? i + 1 : null };
+      if (session.wrong === hk) { st.cls = "bad"; st[d] ||= { cls: "tint", label: b[d].label }; }
+    }
     return st;
   }
   const inSet = b.region === c.region && (c.region !== "bass" || b.kind === c.kind);
@@ -548,21 +733,48 @@ function cardState(b) {
   return st;
 }
 const correct = () => session.targets?.some(b => b.key === session.picked);
+function promptOf(c) {
+  if (c.type === "loc") return dirBadge(c.dir) + `<span>${c.btn.kind === "chord" ? "Which chord?" : c.btn.kind === "bass" ? "Which bass note?" : "Which note?"}</span>`;
+  if (c.type === "find") return dirBadge(c.dir) + `<span>Find ${findLabel(c)} on the ${REGION[c.region]}</span>`;
+  if (c.type === "notes") return `<span>Name the notes of <b>${c.scale.title}</b></span>`;
+  if (c.type === "chords") return `<span>Which chords usually back <b>${c.scale.title}</b>?</span>`;
+  if (c.type === "path") return `<span>Play <b>${c.scale.title}</b> up an octave from the lit ${fmt(c.scale.tonic)}</span>`;
+  return `<span>Back a <b>${c.chord.name}</b> chord on the bass side</span>`;
+}
+function resultOf(c) {   // -> [html, suggested grade]
+  if (!session.shown) return ["", 0];
+  if (c.type === "find") {
+    const n = session.targets.length, where = n > 1 ? `all ${n} places it sits` : "where it sits";
+    if (session.picked == null) return [`Outlined in green: ${where}.`, 1];
+    if (correct()) return [`<span class="yes">Correct.</span> ${n > 1 ? `Green outlines show ${where}.` : ""}`, 3];
+    return [`<span class="no">That one is ${esc(BY_KEY[session.picked][c.dir].label)}.</span> Green outlines show ${where}.`, 1];
+  }
+  if (c.type === "loc") return [`${esc(c.btn[c.dir].label)} on ${c.dir}; the other side is ${esc(c.btn[c.dir === "push" ? "pull" : "push"].label)}.`, 0];
+  if (c.type === "notes")
+    return [`<div class="degrees" style="justify-content:center">${c.scale.notes.map((n, i) => `<span class="${i ? "" : "tonic"}">${fmt(n)}<small>${i + 1}</small></span>`).join("")}</div>`, 0];
+  if (c.type === "chords")
+    return [`<ul class="chordlist">${c.scale.chords.map(ch => `<li><b>${ch.name}<span class="numeral">${ch.numeral}</span></b> ${esc(cap(ch.how))}</li>`).join("")}</ul>`, 0];
+  if (c.type === "path") {
+    const p = c.scale.path, n = reversals(p);
+    if (session.ok) return [`<span class="yes">Correct.</span>${pathLine(session.taps.map(hk => ({ b: BY_KEY[hk.slice(0, -4)], d: hk.slice(-4) })))}`, 3];
+    const miss = session.wrong ? `<span class="no">${esc(halfOf(session.wrong).label)} isn’t next; it’s ${fmt(p[session.taps.length].b[p[session.taps.length].d].name)}.</span> ` : "";
+    return [`${miss}One way, with ${n} bellows change${n === 1 ? "" : "s"}:${pathLine(p)}`, 1];
+  }
+  const how = `${c.chord.name}: ${esc(c.chord.how)}.`;
+  if (session.ok) return [`<span class="yes">Correct.</span> ${how}`, 3];
+  return [`${session.wrong ? `<span class="no">Not that one (${esc(halfOf(session.wrong).label)} on ${session.wrong.slice(-4)}).</span> ` : ""}${how}`, 1];
+}
 function renderCard() {
   const { d, c } = session.cur, st = stateOf(d.key, c), q = session.queue;
   session.targets = c.type === "find" ? targetsOf(c) : null;
   const nNew = q.filter(x => !stateOf(x.d.key, x.c)).length + (st ? 0 : 1);
   const nLearn = q.filter(x => stateOf(x.d.key, x.c)?.s === "learn").length + (st?.s === "learn" ? 1 : 0);
   const nRev = q.length + 1 - nNew - nLearn;
-  const what = c.type === "loc" ? (c.btn.kind === "chord" ? "Which chord?" : c.btn.kind === "bass" ? "Which bass note?" : "Which note?")
-    : `Find ${findLabel(c)} on the ${REGION[c.region]}`;
-  let result = "", suggest = 0;
-  if (session.shown && c.type === "find") {
-    const n = session.targets.length, where = n > 1 ? `all ${n} places it sits` : "where it sits";
-    if (session.picked == null) { result = `Outlined in green: ${where}.`; suggest = 1; }
-    else if (correct()) { result = `<span class="yes">Correct.</span> ${n > 1 ? `Green outlines show ${where}.` : ""}`; suggest = 3; }
-    else { const p = BY_KEY[session.picked]; result = `<span class="no">That one is ${esc(p[c.dir].label)}.</span> Green outlines show ${where}.`; suggest = 1; }
-  } else if (session.shown) result = `${esc(c.btn[c.dir].label)} on ${c.dir}; the other side is ${esc(c.btn[c.dir === "push" ? "pull" : "push"].label)}.`;
+  const [result, suggest] = resultOf(c);
+  const view = { loc: d.key === "bass" ? "bass" : "treble", find: d.key === "bass" ? "bass" : "treble", path: "treble", bchord: "bass",
+    notes: session.shown && "treble", chords: null }[c.type];
+  const tapping = c.type === "find" || c.type === "path" || c.type === "bchord";
+  const hint = c.type === "path" ? "Tap each next note, either row · " : c.type === "bchord" ? "Tap the bass and chord halves · " : c.type === "find" ? "Tap the button · " : "Say it to yourself, then ";
   $("#view").innerHTML = `
     <section class="study">
       <div class="study-head">
@@ -570,32 +782,55 @@ function renderCard() {
         <div class="counts num" aria-label="Remaining"><span class="c-new">${nNew} new</span><span class="c-learn">${nLearn} learning</span><span class="c-rev">${nRev} review</span></div>
       </div>
       <div class="deckname">${esc(d.title)}${d.dir ? " · " + d.dir : ""}</div>
-      <div class="prompt">${dirBadge(c.dir)}<span>${what}</span></div>
-      <div class="boardbox" id="board">${boardSvg(cardState, d.key === "bass" ? "bass" : "treble")}</div>
+      <div class="prompt">${promptOf(c)}</div>
+      ${view ? `<div class="boardbox" id="board">${boardSvg(cardState, view)}</div>` : ""}
       <div class="result" aria-live="polite">${result}</div>
       ${session.shown ? `<div class="grades">
           ${[["again", 1, "Again"], ["hard", 2, "Hard"], ["good", 3, "Good"], ["easy", 4, "Easy"]].map(([cls, g, l]) =>
             `<button class="grade ${cls} ${g === suggest ? "suggest" : ""}" data-g="${g}">${l}<small>${preview(st, g)}</small></button>`).join("")}
-        </div><div class="hint" style="text-align:center">Keys: 1 Again · 2 Hard · 3 Good · 4 Easy · R replay · tap any button to hear it</div>`
-      : `<button class="btn primary reveal" id="show">${c.type === "find" ? "I don’t know — show me" : "Show answer"}</button>
-         <div class="hint" style="text-align:center">${c.type === "find" ? "Tap the button · " : "Say it to yourself, then "}Space shows the answer</div>`}
+        </div><div class="hint" style="text-align:center">Keys: 1 Again · 2 Hard · 3 Good · 4 Easy · R replay${view ? " · tap any button to hear it" : ""}</div>`
+      : `<button class="btn primary reveal" id="show">${tapping ? "I don’t know — show me" : "Show answer"}</button>
+         <div class="hint" style="text-align:center">${hint}Space shows the answer</div>`}
     </section>`;
   $("#back").onclick = renderHome;
   $("#show")?.addEventListener("click", reveal);
   document.querySelectorAll("[data-g]").forEach(b => b.onclick = () => grade(+b.dataset.g));
-  $("#board").addEventListener("pointerdown", e => {
+  $("#board")?.addEventListener("pointerdown", e => {
     const el = e.target.closest(".half[role=button]"); if (!el) return;
-    const b = BY_KEY[el.dataset.k];
-    if (!session.shown && c.type === "find") { session.picked = b.key; reveal(); }
-    else if (session.shown) playFor(b[c.type === "find" ? c.dir : el.dataset.dir].midi);
+    const b = BY_KEY[el.dataset.k], dir = el.dataset.dir;
+    if (session.shown) playFor(b[c.type === "find" ? c.dir : dir].midi);
+    else if (c.type === "find") { session.picked = b.key; reveal(); }
+    else if (c.type === "path") tapPath(c, b, dir);
+    else if (c.type === "bchord") tapChord(c, b, dir);
   });
 }
-function answerTone() {
-  const { c } = session.cur;
-  if (c.type === "loc") return c.btn[c.dir].midi;
-  return (correct() ? BY_KEY[session.picked] : session.targets[0])[c.dir].midi;
+function tapPath(c, b, d) {
+  const hk = b.key + d, want = c.scale.path[session.taps.length];
+  playFor(b[d].midi, 450);
+  if (b[d].midi[0] !== want.midi) { session.wrong = hk; session.shown = true; }
+  else { session.taps.push(hk); if (session.taps.length === c.scale.path.length) session.ok = session.shown = true; }
+  renderCard();
 }
-function reveal() { session.shown = true; renderCard(); playFor(answerTone()); }
+function tapChord(c, b, d) {
+  const hk = b.key + d;
+  if (session.taps.includes(hk)) return playFor(b[d].midi, 450);
+  const taps = [...session.taps, hk], fits = c.chord.ways.filter(w => taps.every(t => w.taps.includes(t)));
+  if (!fits.length) { session.wrong = hk; session.shown = true; playFor(b[d].midi, 450); }
+  else {
+    session.taps = taps;
+    if (fits.some(w => w.taps.length === taps.length)) { session.ok = session.shown = true; playFor(taps.flatMap(t => halfOf(t).midi), 900); }
+    else playFor(b[d].midi, 450);
+  }
+  renderCard();
+}
+function answerSound() {
+  const { c } = session.cur;
+  if (c.type === "loc") return playFor(c.btn[c.dir].midi);
+  if (c.type === "find") return playFor((correct() ? BY_KEY[session.picked] : session.targets[0])[c.dir].midi);
+  if (c.type === "notes" || c.type === "path") return playSeq(c.scale.path);
+  if (c.type === "bchord") return playFor(chordTone(c.chord), 900);
+}
+function reveal() { session.shown = true; renderCard(); answerSound(); }
 function grade(g) {
   const { d, c } = session.cur, now = Date.now();
   const st = schedule(stateOf(d.key, c), g, now);
@@ -620,7 +855,7 @@ document.addEventListener("keydown", e => {
   if (!session?.cur || e.metaKey || e.ctrlKey || e.target.matches("select, input")) return;
   if (e.key === " " && !session.shown) { e.preventDefault(); reveal(); }
   else if (session.shown && "1234".includes(e.key)) grade(+e.key);
-  else if (e.key.toLowerCase() === "r" && session.shown) playFor(answerTone());
+  else if (e.key.toLowerCase() === "r" && session.shown) answerSound();
 });
 
 setTab(tab);
