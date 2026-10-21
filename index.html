@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>C♯/D Box Trainer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Two views: Keyboard (interactive layout) and Flashcards (spaced repetition over the same drawing). */
+:root {
+  --page: #f1efea;
+  --slab: #fcfbf8;
+  --ink: #1d1c1a;
+  --muted: #67635c;
+  --rule: #d8d4cc;
+  --faint: #e6e2da;
+  --push: #2d5bc4;        /* push half */
+  --push-soft: #dbe4f7;
+  --pull: #c2531d;        /* pull half */
+  --pull-soft: #f6e0d3;
+  --ok: #3f7d38;
+  --bad: #b3261e;
+  --gold: #9c7410;
+  --on-ink: #ffffff;
+  --f-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #141518; --slab: #1c1e22; --ink: #e9e7e3; --muted: #a29e96; --rule: #34363b; --faint: #26282d;
+    --push: #7d9ef0; --push-soft: #24314f; --pull: #ec8a57; --pull-soft: #4a2c1e;
+    --ok: #86c27a; --bad: #f08079; --gold: #d8b450; --on-ink: #101114;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #141518; --slab: #1c1e22; --ink: #e9e7e3; --muted: #a29e96; --rule: #34363b; --faint: #26282d;
+  --push: #7d9ef0; --push-soft: #24314f; --pull: #ec8a57; --pull-soft: #4a2c1e;
+  --ok: #86c27a; --bad: #f08079; --gold: #d8b450; --on-ink: #101114;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--page); color: var(--ink); }
+body { font-family: var(--f-ui); font-size: 16px; line-height: 1.5; margin: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 960px; margin: 0 auto; padding-block: 24px 64px; display: flex; flex-direction: column; gap: 22px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--push); outline-offset: 2px; }
+header.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+header.top h1 { font-weight: 600; font-size: 28px; line-height: 1.1; margin: 0; letter-spacing: -.01em; }
+header.top p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.tabs { display: flex; gap: 4px; background: var(--faint); padding: 3px; border-radius: 8px; }
+.tabs button { border: 0; background: transparent; padding: 6px 14px; border-radius: 6px; font-weight: 500; color: var(--muted); }
+.tabs button[aria-selected="true"] { background: var(--slab); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .08); }
+.label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.btn { border: 1px solid var(--rule); background: var(--slab); border-radius: 6px; padding: 9px 16px; font-weight: 500; }
+.btn.primary { background: var(--ink); color: var(--page); border-color: var(--ink); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.small { padding: 5px 10px; font-size: 14px; }
+.chip { border: 1px solid var(--rule); border-radius: 999px; padding: 4px 12px; font-size: 14px; background: transparent; color: var(--muted); }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+.chip.push[aria-pressed="true"] { background: var(--push); border-color: var(--push); color: var(--on-ink); }
+.chip.pull[aria-pressed="true"] { background: var(--pull); border-color: var(--pull); color: var(--on-ink); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row .label { margin-right: 4px; }
+.hint { font-size: 13px; color: var(--muted); }
+.legend { display: inline-flex; gap: 14px; font-size: 14px; }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; background: var(--c); vertical-align: -1px; }
+
+/* the drawing */
+.boardbox { background: var(--slab); border: 1px solid var(--rule); border-radius: 10px; overflow-x: auto; }
+.board { display: block; width: 100%; min-width: 620px; height: auto; user-select: none; -webkit-user-select: none; }
+.board text { font-family: var(--f-ui); }
+.board.narrow { min-width: 0; max-width: 560px; margin: 0 auto; }
+.board .hdr { font-size: 12px; letter-spacing: .08em; fill: var(--muted); text-anchor: middle; }
+.board .rowlbl { font-size: 13px; fill: var(--muted); font-weight: 500; }
+.board .bellows line { stroke: var(--rule); stroke-width: 1.5; }
+.board .bellows text { font-size: 15px; letter-spacing: .2em; fill: var(--muted); text-anchor: middle; }
+.board .half { fill: var(--slab); touch-action: manipulation; }
+.board .half[role="button"] { cursor: pointer; }
+.board .half:focus { outline: none; }
+.board .half:focus-visible { stroke: var(--ink); stroke-width: 3; }
+.board .half.push.tint { fill: var(--push-soft); }
+.board .half.pull.tint { fill: var(--pull-soft); }
+.board .half.push.on { fill: var(--push); }
+.board .half.pull.on { fill: var(--pull); }
+.board .half.dim { fill: var(--faint); }
+.board .ring { fill: none; stroke: var(--ink); stroke-width: 1.6; pointer-events: none; }
+.board .div { stroke: var(--ink); stroke-width: 1.2; pointer-events: none; }
+.board .lbl { font-size: 15px; font-weight: 500; text-anchor: middle; dominant-baseline: central; fill: var(--ink); pointer-events: none; }
+.board .lbl.sm { font-size: 13px; }
+.board .lbl.on { fill: var(--on-ink); }
+.board .lbl.dim { fill: var(--muted); opacity: .6; }
+.board .btn-g.faint { opacity: .28; }
+.board .btn-g.target .ring { stroke-width: 3.5; }
+.board .btn-g.ok .ring { stroke: var(--ok); stroke-width: 4; }
+.board .btn-g.bad .ring { stroke: var(--bad); stroke-width: 4; stroke-dasharray: 5 4; }
+
+/* flashcards home */
+.summary { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; }
+.stat { display: flex; flex-direction: column; gap: 2px; padding-right: 20px; border-right: 1px solid var(--rule); }
+.stat:last-of-type { border-right: 0; }
+.stat .num { font-size: 28px; line-height: 1.1; }
+.summary .go { margin-left: auto; align-self: center; }
+.decks { display: flex; flex-direction: column; gap: 10px; }
+.deck { display: grid; grid-template-columns: 28px 1fr auto; gap: 4px 14px; align-items: center; background: var(--slab); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; }
+.deck .step { font-family: var(--f-mono); color: var(--muted); font-size: 14px; }
+.deck .t { font-weight: 600; }
+.deck .t .dir { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; margin-left: 8px; font-weight: 500; }
+.deck .pat { grid-column: 2 / -1; font-size: 14px; color: var(--muted); }
+.deck .sub { grid-column: 2 / -1; display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); align-items: center; }
+.bar { grid-column: 2 / -1; display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--faint); margin-top: 4px; }
+.bar i { display: block; height: 100%; }
+.bar .m { background: var(--ok); } .bar .r { background: var(--push); } .bar .l { background: var(--gold); }
+.key { display: inline-flex; align-items: center; gap: 5px; }
+.key::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--c); }
+.c-push { color: var(--push); } .c-pull { color: var(--pull); }
+.note { font-size: 14px; color: var(--muted); max-width: 70ch; margin: 0; }
+
+/* study */
+.study { display: flex; flex-direction: column; gap: 14px; }
+.study-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+.study-head .counts { display: flex; gap: 14px; font-size: 14px; }
+.c-new { color: var(--push); } .c-learn { color: var(--gold); } .c-rev { color: var(--ok); }
+.prompt { font-size: 22px; text-align: center; display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; min-height: 40px; }
+.badge { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; color: var(--on-ink); background: var(--c); border-radius: 4px; padding: 3px 8px; }
+.deckname { font-size: 12px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; text-align: center; }
+.result { text-align: center; font-size: 17px; min-height: 26px; }
+.result .yes { color: var(--ok); font-weight: 600; } .result .no { color: var(--bad); font-weight: 600; }
+.grades { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.grade { border: 1px solid var(--rule); background: var(--slab); border-radius: 8px; padding: 10px 6px; display: flex; flex-direction: column; align-items: center; gap: 2px; font-weight: 500; }
+.grade small { font-family: var(--f-mono); font-size: 12px; color: var(--muted); font-weight: 400; }
+.grade.again { color: var(--bad); } .grade.good { color: var(--push); } .grade.easy { color: var(--ok); }
+.grade.suggest { border-color: currentColor; border-width: 2px; }
+.reveal { width: 100%; }
+.done { text-align: center; padding: 48px 16px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+.done .big { font-size: 30px; font-weight: 600; }
+.foot { font-size: 12px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 14px; display: flex; flex-direction: column; gap: 6px; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--page); padding: 8px 14px; border-radius: 6px; font-size: 14px; }
+@media (max-width: 560px) {
+  .summary .go { margin-left: 0; width: 100%; }
+  .summary .go .btn { width: 100%; }
+  .deck { grid-template-columns: 1fr auto; }
+  .deck .step { display: none; }
+  .deck .pat, .deck .sub, .bar { grid-column: 1 / -1; }
+  .prompt { font-size: 19px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>C♯/D button accordion</h1>
+      <p>23-button treble · 8-button modern bass layout</p>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="View">
+      <button role="tab" data-tab="board">Keyboard</button>
+      <button role="tab" data-tab="cards">Flashcards</button>
+    </nav>
+  </header>
+  <main id="view"></main>
+  <footer class="foot">
+    <span>Left half of each button = push, right half = pull. Chords: + = major. Layout drawn from the “23 button C#/D modern bass layout” chart.</span>
+    <span>Tones are synthesized and the octaves are approximate: each row is assumed to rise left to right from about C♯3/D3. Note names are exact.</span>
+    <span>Flashcards are scheduled Again / Hard / Good / Easy, spaced like Anki. Progress is saved in this browser; a card counts as mastered once its interval reaches 21 days.</span>
+  </footer>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const fmt = n => n.replace("#", "♯");
+const cap = s => s[0].toUpperCase() + s.slice(1);
+function lsGet(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+
+// ---------- layout ----------
+const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const PC = Object.fromEntries(NOTES.map((n, i) => [n, i]));
+const rep = (a, n) => Array.from({ length: n }, (_, i) => a[i % a.length]);
+const lowestFrom = (n, min) => { let m = min; while (m % 12 !== PC[n]) m++; return m; };
+function ascend(names, min) { const out = []; for (const n of names) { const m = lowestFrom(n, min); out.push(m); min = m + 1; } return out; }
+
+const R = 27, SP = 64;
+const ROWS = [
+  { region: "D", label: "D row", push: rep(["D", "F#", "A"], 11), pull: rep(["G", "B", "C#", "E"], 11), low: 50, cy: 392, x0: 100 },
+  { region: "Cs", label: "C♯ row", push: rep(["C#", "F", "G#"], 12), pull: rep(["F#", "A#", "C", "D#"], 12), low: 49, cy: 454, x0: 68 },
+];
+const BASS = [["chord", "A", "E"], ["bass", "A", "E"], ["chord", "D", "A"], ["bass", "D", "A"],
+              ["chord", "F#", "B"], ["bass", "F#", "B"], ["chord", "E", "G"], ["bass", "E", "G"]];
+const REGION = { D: "D row", Cs: "C♯ row", bass: "bass side" };
+
+const BUTTONS = [];
+for (const row of ROWS) {
+  const pushM = ascend(row.push, row.low), pullM = ascend(row.pull, pushM[0] + 1);
+  row.push.forEach((_, i) => BUTTONS.push({
+    key: row.region + (i + 1), region: row.region, idx: i, kind: "note", cx: row.x0 + i * SP, cy: row.cy,
+    push: { name: row.push[i], label: fmt(row.push[i]), midi: [pushM[i]] },
+    pull: { name: row.pull[i], label: fmt(row.pull[i]), midi: [pullM[i]] },
+  }));
+}
+const bassTone = (kind, n) => {
+  if (kind === "bass") { const m = lowestFrom(n, 38); return [m, m + 12]; }
+  const r = lowestFrom(n, 50); return [r, r + 4, r + 7];
+};
+BASS.forEach(([kind, push, pull], j) => BUTTONS.push({
+  key: "bass" + (j + 1), region: "bass", idx: j, kind, cx: 300 + (j % 4) * SP, cy: 104 + Math.floor(j / 4) * 64,
+  push: { name: push, label: fmt(push) + (kind === "chord" ? "+" : ""), midi: bassTone(kind, push) },
+  pull: { name: pull, label: fmt(pull) + (kind === "chord" ? "+" : ""), midi: bassTone(kind, pull) },
+}));
+const BY_KEY = Object.fromEntries(BUTTONS.map(b => [b.key, b]));
+const describe = (b, d) => `${REGION[b.region]} ${b.region === "bass" ? b.kind : "button"} ${b.region === "bass" ? "" : b.idx + 1} ${d}`.replace(/\s+/g, " ");
+
+// state(b) -> { cls, click, push: { label, cls }, pull: { label, cls } }
+const VIEW = { all: "-62 36 872 454", treble: "-62 352 872 136", bass: "170 40 460 186" };
+function boardSvg(state, view = "all") {
+  let s = `<svg class="board${view === "bass" ? " narrow" : ""}" viewBox="${VIEW[view]}" aria-label="Button layout">`;
+  ["CHORD", "BASS", "CHORD", "BASS"].forEach((h, c) => s += `<text class="hdr" x="${300 + c * SP}" y="62">${h}</text>`);
+  s += `<text class="rowlbl" x="232" y="141" text-anchor="end">Bass side</text>`;
+  s += `<g class="bellows">${[236, 256, 300, 320].map(y => `<line x1="150" x2="650" y1="${y}" y2="${y}"/>`).join("")}<text x="400" y="284">BELLOWS</text></g>`;
+  for (const row of ROWS) s += `<text class="rowlbl" x="-54" y="${row.cy + 5}">${row.label}</text>`;
+  for (const b of BUTTONS) s += btnSvg(b, state(b));
+  return s + "</svg>";
+}
+function btnSvg(b, st) {
+  const { cx, cy } = b, top = cy - R, bot = cy + R, sm = b.kind === "chord" ? " sm" : "";
+  const half = (d, sweep, x) => {
+    const h = st[d] || {};
+    const a11y = st.click ? ` tabindex="0" role="button" aria-label="${esc(describe(b, d))}"` : "";
+    return `<path class="half ${d} ${h.cls || ""}" d="M${cx} ${top} A${R} ${R} 0 0 ${sweep} ${cx} ${bot} Z" data-k="${b.key}" data-dir="${d}"${a11y}/>`
+      + (h.label ? `<text class="lbl${sm} ${h.cls || ""}" x="${x}" y="${cy}">${esc(h.label)}</text>` : "");
+  };
+  return `<g class="btn-g ${st.cls || ""}">${half("push", 0, cx - R * .5)}${half("pull", 1, cx + R * .5)}`
+    + `<line class="div" x1="${cx}" x2="${cx}" y1="${top}" y2="${bot}"/><circle class="ring" cx="${cx}" cy="${cy}" r="${R}"/></g>`;
+}
+
+// ---------- sound: two detuned saw reeds through a lowpass, like a musette-ish box ----------
+let actx = null;
+function audio() {
+  actx ||= new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === "suspended") actx.resume();
+  return actx;
+}
+function startTone(midis) {
+  const c = audio(), t = c.currentTime, out = c.createGain(), lp = c.createBiquadFilter();
+  lp.type = "lowpass"; lp.frequency.value = midis[0] < 48 ? 1400 : 2600; lp.Q.value = .7;
+  out.gain.setValueAtTime(0, t);
+  out.gain.linearRampToValueAtTime(.16 / Math.sqrt(midis.length), t + .03);
+  lp.connect(out); out.connect(c.destination);
+  const oscs = [];
+  for (const m of midis) for (const det of [-8, 8]) {
+    const o = c.createOscillator();
+    o.type = "sawtooth"; o.frequency.value = 440 * 2 ** ((m - 69) / 12); o.detune.value = det;
+    o.connect(lp); o.start(t); oscs.push(o);
+  }
+  let stopped = false;
+  return { stop() {
+    if (stopped) return; stopped = true;
+    const t2 = c.currentTime;
+    if (out.gain.cancelAndHoldAtTime) out.gain.cancelAndHoldAtTime(t2);
+    else { out.gain.cancelScheduledValues(t2); out.gain.setValueAtTime(out.gain.value, t2); }
+    out.gain.setTargetAtTime(0, t2, .04);
+    oscs.forEach(o => o.stop(t2 + .3));
+  } };
+}
+let held = null;
+function playFor(midis, ms = 700) { held?.stop(); const h = held = startTone(midis); setTimeout(() => h.stop(), ms); }
+
+// ---------- tabs ----------
+let tab = lsGet("box.tab", "board");
+function setTab(t) {
+  tab = t; lsSet("box.tab", t); session = null;
+  document.querySelectorAll("[data-tab]").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
+  t === "board" ? renderExplorer() : renderHome();
+}
+document.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+
+// ---------- keyboard explorer ----------
+const ex = { dir: lsGet("box.dir", "both"), hide: false, find: null, peek: new Set(), sounding: null };
+function exState(b) {
+  const st = { click: true };
+  for (const d of ["push", "pull"]) {
+    const active = ex.dir === "both" || ex.dir === d, h = b[d];
+    const lit = (active && ex.find === h.name) || ex.sounding === b.key + d;
+    const show = !ex.hide || lit || ex.peek.has(b.key + d);
+    st[d] = { label: show ? h.label : "", cls: lit ? "on" : active ? "tint" : "dim" };
+  }
+  return st;
+}
+function renderExplorer() {
+  $("#view").innerHTML = `
+    <section style="display:flex;flex-direction:column;gap:14px">
+      <div class="row">
+        <span class="label">Bellows</span>
+        ${["both", "push", "pull"].map(d => `<button class="chip ${d}" data-dir="${d}" aria-pressed="${ex.dir === d}">${d === "both" ? "Both" : cap(d)}</button>`).join("")}
+        <span class="legend" style="margin-left:auto"><span style="--c:var(--push)">Push</span><span style="--c:var(--pull)">Pull</span></span>
+      </div>
+      <div class="boardbox" id="board"></div>
+      <div class="row">
+        <span class="label">Find a note</span>
+        ${NOTES.map(n => `<button class="chip" data-find="${n}" aria-pressed="${ex.find === n}">${fmt(n)}</button>`).join("")}
+      </div>
+      <div class="row">
+        <label class="hint" style="display:inline-flex;gap:8px;align-items:center;font-size:14px;color:var(--ink)">
+          <input type="checkbox" id="hide" ${ex.hide ? "checked" : ""}> Hide note names (press a button to peek)
+        </label>
+      </div>
+      <p class="hint" style="margin:0">Press and hold a button half to hear it. With the bellows set to Push or Pull, either half of a button plays that direction, like the real instrument. Keys: Tab to a button, Enter to play.</p>
+    </section>`;
+  drawExplorer();
+  document.querySelectorAll("[data-dir]").forEach(b => b.onclick = () => { ex.dir = b.dataset.dir; lsSet("box.dir", ex.dir); renderExplorer(); });
+  document.querySelectorAll("[data-find]").forEach(b => b.onclick = () => { ex.find = ex.find === b.dataset.find ? null : b.dataset.find; renderExplorer(); });
+  $("#hide").onchange = e => { ex.hide = e.target.checked; ex.peek.clear(); drawExplorer(); };
+  const board = $("#board");
+  board.addEventListener("pointerdown", e => {
+    const el = e.target.closest(".half"); if (!el) return;
+    e.preventDefault();
+    const b = BY_KEY[el.dataset.k], d = ex.dir === "both" ? el.dataset.dir : ex.dir;
+    press(b, d);
+    const up = () => { release(); removeEventListener("pointerup", up); removeEventListener("pointercancel", up); };
+    addEventListener("pointerup", up); addEventListener("pointercancel", up);
+  });
+  board.addEventListener("keydown", e => {
+    const el = e.target.closest(".half");
+    if (!el || (e.key !== "Enter" && e.key !== " ") || e.repeat) return;
+    e.preventDefault();
+    const b = BY_KEY[el.dataset.k], d = ex.dir === "both" ? el.dataset.dir : ex.dir;
+    press(b, d, el.dataset.dir);
+    setTimeout(release, 600);
+  });
+}
+function drawExplorer(focus) {
+  $("#board").innerHTML = boardSvg(exState);
+  if (focus) $(`#board .half[data-k="${focus[0]}"][data-dir="${focus[1]}"]`)?.focus();
+}
+function press(b, d, focusDir) {
+  held?.stop();
+  held = startTone(b[d].midi);
+  ex.sounding = b.key + d;
+  if (ex.hide) ex.peek.add(b.key + d);
+  drawExplorer(focusDir && [b.key, focusDir]);
+}
+function release() {
+  held?.stop(); held = null;
+  if (!ex.sounding) return;
+  const k = ex.sounding, focused = document.activeElement?.closest?.(".half");
+  ex.sounding = null;
+  if (tab !== "board") return;
+  drawExplorer(focused && [focused.dataset.k, focused.dataset.dir]);
+  setTimeout(() => {
+    if (!ex.peek.delete(k) || tab !== "board" || !$("#board")) return;
+    const f = document.activeElement?.closest?.(".half");
+    drawExplorer(f && [f.dataset.k, f.dataset.dir]);
+  }, 1200);
+}
+
+// ---------- decks ----------
+// Location cards ("name the note") for every button half, then find cards ("where is X?") for each distinct note.
+// A find card accepts any button in the region that plays the note, since the rows repeat.
+const DECKS = [];
+for (const row of ROWS) for (const dir of ["push", "pull"]) {
+  const btns = BUTTONS.filter(b => b.region === row.region), names = [...new Set(btns.map(b => b[dir].name))];
+  DECKS.push({
+    key: `${row.region}-${dir}`.toLowerCase(), title: row.label, dir,
+    pattern: `${cap(dir)} runs ${names.map(fmt).join(" – ")}, then repeats` + (row.region === "Cs" ? "; the row sits half a button left of the D row." : "."),
+    cards: [
+      ...btns.map(b => ({ id: `loc:${b.key}:${dir}`, type: "loc", dir, btn: b })),
+      ...names.map(n => ({ id: `find:${row.region}:${dir}:${n}`, type: "find", dir, region: row.region, kind: "note", name: n })),
+    ],
+  });
+}
+{
+  const btns = BUTTONS.filter(b => b.region === "bass"), cards = [];
+  for (const b of btns) for (const dir of ["push", "pull"]) cards.push({ id: `loc:${b.key}:${dir}`, type: "loc", dir, btn: b });
+  for (const kind of ["bass", "chord"]) for (const dir of ["push", "pull"])
+    for (const n of new Set(btns.filter(b => b.kind === kind).map(b => b[dir].name)))
+      cards.push({ id: `find:bass:${kind}:${dir}:${n}`, type: "find", dir, region: "bass", kind, name: n });
+  DECKS.push({ key: "bass", title: "Bass side", dir: null, cards,
+    pattern: "Bass buttons: A/E, D/A, F♯/B, E/G. Each chord button plays the major chord of the bass button to its right." });
+}
+const TYPES = [["loc", "Name the note"], ["find", "Find the button"]];
+const targetsOf = c => BUTTONS.filter(b => b.region === c.region && (c.region !== "bass" || b.kind === c.kind) && b[c.dir].name === c.name);
+const findLabel = c => c.kind === "chord" ? `the ${fmt(c.name)} major chord` : c.kind === "bass" ? `bass note ${fmt(c.name)}` : fmt(c.name);
+const dirBadge = d => `<span class="badge" style="--c:var(--${d})">${d}</span>`;
+
+const prefs = Object.assign({ newPerSession: 15, types: TYPES.map(t => t[0]) }, lsGet("box.prefs", {}));
+const progress = {};
+for (const d of DECKS) progress[d.key] = lsGet("box.p." + d.key, {});
+const saveDeck = key => lsSet("box.p." + key, progress[key]);
+
+// ---------- scheduling ----------
+const MIN = 60e3, DAY = 864e5;
+const enabled = c => prefs.types.includes(c.type);
+const stateOf = (dk, c) => progress[dk][c.id];
+function bucket(st, now) {
+  if (!st) return "new";
+  if (st.s === "learn") return "learn";
+  if (st.ivl >= 21) return st.due <= now ? "due" : "mastered";
+  return st.due <= now ? "due" : "review";
+}
+function schedule(st, g, now) {
+  st = st ? { ...st } : { s: "new", step: 0, ivl: 0, ease: 2.5, reps: 0, lapses: 0 };
+  st.reps++; st.last = now;
+  if (st.s !== "review") {
+    if (g === 1) { st.s = "learn"; st.step = 0; st.due = now + MIN; }
+    else if (g === 2) { st.s = "learn"; st.due = now + 6 * MIN; }
+    else if (g === 3 && st.step < 1) { st.s = "learn"; st.step = 1; st.due = now + 10 * MIN; }
+    else { st.s = "review"; st.ivl = g === 4 ? 4 : (st.lapses ? Math.max(1, st.ivl) : 1); st.due = now + st.ivl * DAY; }
+  } else {
+    if (g === 1) { st.lapses++; st.ease = Math.max(1.3, st.ease - .2); st.s = "learn"; st.step = 0; st.ivl = Math.max(1, Math.round(st.ivl * .3)); st.due = now + 10 * MIN; }
+    else {
+      const mult = g === 2 ? 1.2 : g === 3 ? st.ease : st.ease * 1.3;
+      if (g === 2) st.ease = Math.max(1.3, st.ease - .15);
+      if (g === 4) st.ease += .15;
+      st.ivl = Math.max(st.ivl + 1, Math.round(st.ivl * mult));
+      st.due = now + st.ivl * DAY;
+    }
+  }
+  return st;
+}
+function preview(st, g) {
+  const ms = schedule(st, g, 0).due;
+  if (ms < 60 * MIN) return Math.round(ms / MIN) + "m";
+  const d = Math.round(ms / DAY); return d < 31 ? d + "d" : Math.round(d / 30) + "mo";
+}
+function deckStats(d, now = Date.now()) {
+  const s = { new: 0, learn: 0, due: 0, review: 0, mastered: 0, total: 0 };
+  for (const c of d.cards) { if (!enabled(c)) continue; s.total++; s[bucket(stateOf(d.key, c), now)]++; }
+  return s;
+}
+
+// ---------- flashcards home ----------
+function renderHome() {
+  session = null;
+  const now = Date.now();
+  let due = 0, fresh = 0, mastered = 0, total = 0, seen = 0;
+  for (const d of DECKS) { const s = deckStats(d, now); due += s.due + s.learn; fresh += s.new; mastered += s.mastered; total += s.total; seen += s.total - s.new; }
+  const today = lsGet("box.today", { day: "", n: 0 });
+  const doneToday = today.day === new Date().toDateString() ? today.n : 0;
+  $("#view").innerHTML = `
+    <section style="display:flex;flex-direction:column;gap:20px">
+      <div class="summary" aria-label="Overview">
+        <div class="stat"><span class="label">Due now</span><span class="num">${due}</span></div>
+        <div class="stat"><span class="label">Reviewed today</span><span class="num">${doneToday}</span></div>
+        <div class="stat"><span class="label">Started</span><span class="num">${seen}<small style="font-size:14px;color:var(--muted)">/${total}</small></span></div>
+        <div class="stat"><span class="label">Mastered</span><span class="num">${mastered}</span></div>
+        <div class="go"><button class="btn primary" id="studyAll" ${due + fresh ? "" : "disabled"}>Study all due${fresh ? " + new" : ""}</button></div>
+      </div>
+      <div class="row">
+        <span class="label">Card types</span>
+        ${TYPES.map(([k, l]) => `<button class="chip" data-type="${k}" aria-pressed="${prefs.types.includes(k)}">${l}</button>`).join("")}
+        <label class="label" for="npc" style="margin-left:auto">New per session</label>
+        <select id="npc" class="chip">${[5, 10, 15, 30, 999].map(n => `<option value="${n}" ${prefs.newPerSession == n ? "selected" : ""}>${n === 999 ? "all" : n}</option>`).join("")}</select>
+      </div>
+      <p class="note">Work through the decks in order: each one is a single row and a single bellows direction, so you learn one repeating pattern at a time. Push patterns are short triads and come first; pulls are where the irregular note pairings live. <b>Name the note</b> shows a highlighted button and asks what it plays. <b>Find the button</b> names a note and you tap where it is; it’s graded on the spot.</p>
+      <div class="decks">${DECKS.map(deckHtml).join("")}</div>
+    </section>`;
+  $("#studyAll").onclick = () => startSession(DECKS.map(d => d.key));
+  document.querySelectorAll("[data-type]").forEach(b => b.onclick = () => {
+    const k = b.dataset.type, on = prefs.types.includes(k);
+    prefs.types = on ? prefs.types.filter(x => x !== k) : [...prefs.types, k];
+    lsSet("box.prefs", prefs); renderHome();
+  });
+  $("#npc").onchange = e => { prefs.newPerSession = +e.target.value; lsSet("box.prefs", prefs); };
+  document.querySelectorAll("[data-study]").forEach(b => b.onclick = () => startSession([b.dataset.study]));
+  document.querySelectorAll("[data-reset]").forEach(b => b.onclick = () => armReset(b));
+}
+function deckHtml(d, i) {
+  const s = deckStats(d), t = s.total || 1, pct = x => (100 * x / t).toFixed(2) + "%";
+  const avail = s.due + s.learn + s.new;
+  return `<div class="deck">
+    <div class="step">${i + 1}</div>
+    <div class="t">${d.title}${d.dir ? `<span class="dir c-${d.dir}">${d.dir}</span>` : `<span class="dir" style="color:var(--muted)">push + pull</span>`}</div>
+    <div><button class="btn small primary" data-study="${d.key}" ${avail ? "" : "disabled"}>Study</button></div>
+    <div class="pat">${d.pattern}</div>
+    <div class="bar" role="img" aria-label="${s.mastered} mastered, ${s.review + s.due} in review, ${s.learn} learning, ${s.new} new of ${s.total}">
+      <i class="m" style="width:${pct(s.mastered)}"></i><i class="r" style="width:${pct(s.review + s.due)}"></i><i class="l" style="width:${pct(s.learn)}"></i></div>
+    <div class="sub">
+      <span class="key" style="--c:var(--ok)"><span class="num">${s.mastered}</span> mastered</span>
+      <span class="key" style="--c:var(--push)"><span class="num">${s.review + s.due}</span> review (${s.due} due)</span>
+      <span class="key" style="--c:var(--gold)"><span class="num">${s.learn}</span> learning</span>
+      <span class="key" style="--c:var(--faint)"><span class="num">${s.new}</span> new</span>
+      <button class="btn small" data-reset="${d.key}" style="padding:1px 8px">Reset</button>
+    </div></div>`;
+}
+function armReset(b) {
+  if (b.dataset.armed) { progress[b.dataset.reset] = {}; saveDeck(b.dataset.reset); toast("Deck progress reset"); renderHome(); return; }
+  b.dataset.armed = "1"; b.textContent = "Confirm reset"; b.style.color = "var(--bad)";
+  setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = "Reset"; b.style.color = ""; } }, 4000);
+}
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3500); }
+
+// ---------- study session ----------
+let session = null;
+function startSession(keys) {
+  const now = Date.now(), items = [];
+  let newLeft = prefs.newPerSession;
+  for (const k of keys) {
+    const d = DECKS.find(x => x.key === k);
+    for (const c of d.cards) if (enabled(c) && ["learn", "due"].includes(bucket(stateOf(k, c), now))) items.push({ d, c });
+  }
+  for (const k of keys) {
+    const d = DECKS.find(x => x.key === k);
+    for (const c of d.cards) {
+      if (newLeft <= 0) break;
+      if (enabled(c) && !stateOf(k, c)) { items.push({ d, c, isNew: true }); newLeft--; }
+    }
+  }
+  if (!items.length) { toast("Nothing due in this selection"); return; }
+  // reviews first (shuffled), then new cards in layout order
+  const rev = items.filter(x => !x.isNew).sort(() => Math.random() - .5);
+  session = { queue: [...rev, ...items.filter(x => x.isNew)], cur: null, shown: false, picked: null, reviewed: 0 };
+  next();
+}
+function pick() {
+  const now = Date.now(), q = session.queue;
+  let i = q.findIndex(x => { const st = stateOf(x.d.key, x.c); return st && st.s === "learn" && st.due <= now; });
+  if (i < 0) i = q.findIndex(x => { const st = stateOf(x.d.key, x.c); return !st || st.due <= now; });
+  if (i < 0 && q.length) { // only future learning steps remain: study the soonest one ahead
+    i = 0; q.forEach((x, j) => { if (stateOf(x.d.key, x.c).due < stateOf(q[i].d.key, q[i].c).due) i = j; });
+  }
+  return i < 0 ? null : q.splice(i, 1)[0];
+}
+function next() {
+  session.cur = pick(); session.shown = false; session.picked = null;
+  if (!session.cur) return renderDone();
+  renderCard();
+}
+function cardState(b) {
+  const { c } = session.cur, shown = session.shown;
+  if (c.type === "loc") {
+    const st = { cls: b === c.btn ? "target" : b.region === c.btn.region ? "" : "faint", click: shown };
+    if (b === c.btn) for (const d of ["push", "pull"])
+      st[d] = { label: shown ? b[d].label : d === c.dir ? "?" : "", cls: d === c.dir ? "on" : shown ? "tint" : "" };
+    return st;
+  }
+  const inSet = b.region === c.region && (c.region !== "bass" || b.kind === c.kind);
+  const st = { cls: inSet ? "" : "faint", click: inSet || shown, [c.dir]: { cls: inSet ? "tint" : "" } };
+  if (shown) {
+    if (session.targets.includes(b)) { st.cls = "ok"; st[c.dir] = { cls: "on", label: b[c.dir].label }; }
+    else if (session.picked === b.key) { st.cls = "bad"; st[c.dir] = { cls: "tint", label: b[c.dir].label }; }
+  }
+  return st;
+}
+const correct = () => session.targets?.some(b => b.key === session.picked);
+function renderCard() {
+  const { d, c } = session.cur, st = stateOf(d.key, c), q = session.queue;
+  session.targets = c.type === "find" ? targetsOf(c) : null;
+  const nNew = q.filter(x => !stateOf(x.d.key, x.c)).length + (st ? 0 : 1);
+  const nLearn = q.filter(x => stateOf(x.d.key, x.c)?.s === "learn").length + (st?.s === "learn" ? 1 : 0);
+  const nRev = q.length + 1 - nNew - nLearn;
+  const what = c.type === "loc" ? (c.btn.kind === "chord" ? "Which chord?" : c.btn.kind === "bass" ? "Which bass note?" : "Which note?")
+    : `Find ${findLabel(c)} on the ${REGION[c.region]}`;
+  let result = "", suggest = 0;
+  if (session.shown && c.type === "find") {
+    const n = session.targets.length, where = n > 1 ? `all ${n} places it sits` : "where it sits";
+    if (session.picked == null) { result = `Outlined in green: ${where}.`; suggest = 1; }
+    else if (correct()) { result = `<span class="yes">Correct.</span> ${n > 1 ? `Green outlines show ${where}.` : ""}`; suggest = 3; }
+    else { const p = BY_KEY[session.picked]; result = `<span class="no">That one is ${esc(p[c.dir].label)}.</span> Green outlines show ${where}.`; suggest = 1; }
+  } else if (session.shown) result = `${esc(c.btn[c.dir].label)} on ${c.dir}; the other side is ${esc(c.btn[c.dir === "push" ? "pull" : "push"].label)}.`;
+  $("#view").innerHTML = `
+    <section class="study">
+      <div class="study-head">
+        <button class="btn small" id="back">← All decks</button>
+        <div class="counts num" aria-label="Remaining"><span class="c-new">${nNew} new</span><span class="c-learn">${nLearn} learning</span><span class="c-rev">${nRev} review</span></div>
+      </div>
+      <div class="deckname">${esc(d.title)}${d.dir ? " · " + d.dir : ""}</div>
+      <div class="prompt">${dirBadge(c.dir)}<span>${what}</span></div>
+      <div class="boardbox" id="board">${boardSvg(cardState, d.key === "bass" ? "bass" : "treble")}</div>
+      <div class="result" aria-live="polite">${result}</div>
+      ${session.shown ? `<div class="grades">
+          ${[["again", 1, "Again"], ["hard", 2, "Hard"], ["good", 3, "Good"], ["easy", 4, "Easy"]].map(([cls, g, l]) =>
+            `<button class="grade ${cls} ${g === suggest ? "suggest" : ""}" data-g="${g}">${l}<small>${preview(st, g)}</small></button>`).join("")}
+        </div><div class="hint" style="text-align:center">Keys: 1 Again · 2 Hard · 3 Good · 4 Easy · R replay · tap any button to hear it</div>`
+      : `<button class="btn primary reveal" id="show">${c.type === "find" ? "I don’t know — show me" : "Show answer"}</button>
+         <div class="hint" style="text-align:center">${c.type === "find" ? "Tap the button · " : "Say it to yourself, then "}Space shows the answer</div>`}
+    </section>`;
+  $("#back").onclick = renderHome;
+  $("#show")?.addEventListener("click", reveal);
+  document.querySelectorAll("[data-g]").forEach(b => b.onclick = () => grade(+b.dataset.g));
+  $("#board").addEventListener("pointerdown", e => {
+    const el = e.target.closest(".half[role=button]"); if (!el) return;
+    const b = BY_KEY[el.dataset.k];
+    if (!session.shown && c.type === "find") { session.picked = b.key; reveal(); }
+    else if (session.shown) playFor(b[c.type === "find" ? c.dir : el.dataset.dir].midi);
+  });
+}
+function answerTone() {
+  const { c } = session.cur;
+  if (c.type === "loc") return c.btn[c.dir].midi;
+  return (correct() ? BY_KEY[session.picked] : session.targets[0])[c.dir].midi;
+}
+function reveal() { session.shown = true; renderCard(); playFor(answerTone()); }
+function grade(g) {
+  const { d, c } = session.cur, now = Date.now();
+  const st = schedule(stateOf(d.key, c), g, now);
+  progress[d.key][c.id] = st;
+  saveDeck(d.key);
+  session.reviewed++;
+  const today = lsGet("box.today", { day: "", n: 0 }), day = new Date().toDateString();
+  lsSet("box.today", { day, n: (today.day === day ? today.n : 0) + 1 });
+  if (st.s === "learn") session.queue.push(session.cur);
+  next();
+}
+function renderDone() {
+  const n = session.reviewed;
+  $("#view").innerHTML = `<section class="done">
+    <span class="big">Nice squeezing.</span>
+    <p>${n} card${n === 1 ? "" : "s"} reviewed. Nothing else is due in this selection.</p>
+    <button class="btn primary" id="back">Back to all decks</button></section>`;
+  $("#back").onclick = renderHome;
+  session = null;
+}
+document.addEventListener("keydown", e => {
+  if (!session?.cur || e.metaKey || e.ctrlKey || e.target.matches("select, input")) return;
+  if (e.key === " " && !session.shown) { e.preventDefault(); reveal(); }
+  else if (session.shown && "1234".includes(e.key)) grade(+e.key);
+  else if (e.key.toLowerCase() === "r" && session.shown) playFor(answerTone());
+});
+
+setTab(tab);
+})();
+</script>
+</body>
+</html>
