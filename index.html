@@ -22,6 +22,7 @@
   --ok: #3f7d38;
   --bad: #b3261e;
   --gold: #9c7410;
+  --play: #f2b705;        /* the half that is sounding right now */
   --on-ink: #ffffff;
   --f-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -31,14 +32,14 @@
     color-scheme: dark;
     --page: #141518; --slab: #1c1e22; --ink: #e9e7e3; --muted: #a29e96; --rule: #34363b; --faint: #26282d;
     --push: #7d9ef0; --push-soft: #24314f; --pull: #ec8a57; --pull-soft: #4a2c1e;
-    --ok: #86c27a; --bad: #f08079; --gold: #d8b450; --on-ink: #101114;
+    --ok: #86c27a; --bad: #f08079; --gold: #d8b450; --on-ink: #101114; --play: #ffd34d;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
   --page: #141518; --slab: #1c1e22; --ink: #e9e7e3; --muted: #a29e96; --rule: #34363b; --faint: #26282d;
   --push: #7d9ef0; --push-soft: #24314f; --pull: #ec8a57; --pull-soft: #4a2c1e;
-  --ok: #86c27a; --bad: #f08079; --gold: #d8b450; --on-ink: #101114;
+  --ok: #86c27a; --bad: #f08079; --gold: #d8b450; --on-ink: #101114; --play: #ffd34d;
 }
 * { box-sizing: border-box; }
 html, body { background: var(--page); color: var(--ink); }
@@ -87,6 +88,8 @@ header.top p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
 .board .half.push.on { fill: var(--push); }
 .board .half.pull.on { fill: var(--pull); }
 .board .half.dim { fill: var(--faint); }
+.board .half.play { fill: var(--play); }
+.board .lbl.play, .board .sub.play { fill: #1d1c1a; }
 .board .ring { fill: none; stroke: var(--ink); stroke-width: 1.6; pointer-events: none; }
 .board .div { stroke: var(--ink); stroke-width: 1.2; pointer-events: none; }
 .board .lbl { font-size: 15px; font-weight: 500; text-anchor: middle; dominant-baseline: central; fill: var(--ink); pointer-events: none; }
@@ -407,11 +410,11 @@ function exState(b) {
       inSet = b.kind === "chord" ? sc.chords.some(x => !x.minor && x.root === h.name) : sc.pcs.includes(pc);
       strong = b.kind !== "chord" && pc === PC[sc.tonic];
     }
-    const lit = (active && strong) || ex.sounding === hk;
-    const show = !ex.hide || lit || ex.peek.has(hk);
+    const lit = active && strong, sounding = ex.sounding === hk;
+    const show = !ex.hide || lit || sounding || ex.peek.has(hk);
     const deg = sc && ex.degrees && b.kind !== "chord" && sc.pcs.includes(pc) ? String(sc.pcs.indexOf(pc) + 1) : null;
     const i = steps.indexOf(hk), alt = alts.get(hk);
-    st[d] = { label: show ? deg ?? h.label : "", cls: (lit ? "on" : active && inSet ? "tint" : "dim") + (alt != null ? " alt" : ""),
+    st[d] = { label: show ? deg ?? h.label : "", cls: (sounding ? "play" : lit ? "on" : active && inSet ? "tint" : "dim") + (alt != null ? " alt" : ""),
       sub: i >= 0 ? i + 1 : alt != null ? alt + 1 : null };
   }
   if ((st.push.sub || st.pull.sub) && !steps.includes(b.key + "push") && !steps.includes(b.key + "pull")) st.cls = "alt";
